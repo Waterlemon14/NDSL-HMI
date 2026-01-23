@@ -33,3 +33,6 @@ go.work.sum
 
 # private keys
 *.key
+
+# OS Specific
+*.DS_Store
