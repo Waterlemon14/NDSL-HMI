@@ -6,12 +6,12 @@
 The system is composed of the following subsystems:
 1. Certificate Authority
 2. Databases
-  1. IoT Data
-  2. User Identity
+   - IoT Data
+   - User Identity
 3. Middleware
-  1. Registration System with authentication through MOSIP (Django)
-  2. IoT Data Receiver (?)
-  3. User notification for device joining the network
+   - Registration System with authentication through MOSIP (Django)
+   - IoT Data Receiver (?)
+   - User notification for device joining the network
 
 # Development
 (to add)
