@@ -1,0 +1,16 @@
+[req]
+distinguished_name = req_distinguished_name
+x509_extensions = v3_extensions
+prompt = no
+
+[req_distinguished_name]
+C = PH
+ST = .
+L = .
+O = .
+OU = .
+CN = Root CA
+
+[v3_extensions]
+basicConstraints = CA:TRUE
+keyUsage = keyCertSign, cRLSign
