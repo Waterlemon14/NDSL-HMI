@@ -32,10 +32,15 @@ venv/
 
 # Editor/IDE
 # .idea/
-# .vscode/
+.vscode/
 
 # private keys
 *.key
+*.p12
+ida_partner.pem
 
 # OS Specific
 *.DS_Store
+
+# Byte-compiled / optimized / DLL files
+__pycache__/
