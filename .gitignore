@@ -38,9 +38,16 @@ venv/
 *.key
 *.p12
 ida_partner.pem
+middleware/registration_authority/verification/idverification/mosip/config.toml
 
 # OS Specific
 *.DS_Store
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
+
+# DB files
+*.sqlite3
+
+# Logs
+*.log
