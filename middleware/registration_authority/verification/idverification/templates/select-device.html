@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <title>HMI Registration</title>
+    <script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+  </head>
+  <body class="bg-gray-100 flex items-center justify-center min-h-screen">
+    <div class="bg-white shadow-lg rounded-xl p-8 w-[650px] max-w-full text-center items-center">
+      <h1 class="text-xl font-semibold mb-3">Request Certificate</h1>
+      <form action="" method="post" enctype="multipart/form-data">
+        {% csrf_token %}
+        <div>
+          <label for="device-select" class="text-black font-medium mb-3">Select your device</label> <br>
+          <select name="device-select" id="device-select">
+          {% for device in devices %}
+            <option value="{{ device.id }}">IP: {{device.ip}}, MAC: {{device.mac}}</option>
+          {% endfor %}
+          </select>
+        </div>
+        <input type="submit" name="action" value="Send Request" class="mt-4 px-4 py-2 text-white font-semibold bg-sky-500 rounded-xl hover:bg-sky-700"/>
+      </form>
+      <form action="" method="POST" onsubmit="return confirm('Are you sure you want to wipe the device list? This cannot be undone.');">
+        {% csrf_token %}
+        <input type="submit" name="action" value="Clear All Devices" class="mt-4 px-4 py-2 text-white font-semibold bg-red-500 rounded-xl hover:bg-red-700"/>
+      </form>
+      <form action="" method="POST" onsubmit="return confirm('Send a ping to server?');">
+        {% csrf_token %}
+        <input type="submit" name="action" value="Ping Comms Server" class="mt-4 px-4 py-2 text-white font-semibold bg-yellow-500 rounded-xl hover:bg-yellow-700"/>
+      </form>
+
+      {% if error %}
+        <p style="color: red;">{{ error }}</p>
+      {% endif %}
+      {% if success %}
+        <p style="color: green;">{{ success }}</p>
+      {% endif %}
+    </div>
+  </body>
+</html>
