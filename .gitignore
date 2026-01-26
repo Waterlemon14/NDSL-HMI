@@ -44,6 +44,7 @@ middleware/registration_authority/verification/idverification/mosip/config.toml
 
 # OS Specific
 *.DS_Store
+*:Zone.Identifier
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
