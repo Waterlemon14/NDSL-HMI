@@ -9,4 +9,6 @@ openssl req -x509 -new -nodes -key root-ca.key \
 
 # Public copy of  CA cert
 cp certs/root-ca.crt ../middleware/data/root-ca.crt
+cp certs/root-ca.crt ../middleware/registration_authority/root-ca.crt
 cp certs/root-ca.crt ../IoT/go/root-ca.crt
+cp certs/root-ca.crt server/root-ca.crt

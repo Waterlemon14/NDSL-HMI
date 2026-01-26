@@ -97,7 +97,8 @@ func main() {
 		RootCAs:      rootCAPool,
 		ClientAuth:   tls.RequireAndVerifyClientCert,
 		ClientCAs:    rootCAPool,
-		MinVersion:   tls.VersionTLS13,
+		MinVersion:   tls.VersionTLS12,
+		MaxVersion:   tls.VersionTLS12,
 	}
 
 	server := &http.Server{
@@ -106,7 +107,7 @@ func main() {
 		IdleTimeout: 4 * time.Second,
 	}
 
-	// http.HandleFunc("/ping", handlePing)
+	http.HandleFunc("/ping", handlePing)
 
 	err = server.ListenAndServeTLS("", "")
 	if err != nil {

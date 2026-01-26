@@ -61,74 +61,73 @@ def select_device(request):
 
     if request.method == "POST":
         action = request.POST.get("action")
-        cert_file = "/home/chris/cs198/test_site/id_server.crt"
-        key_file = "/home/chris/cs198/test_site/id_server_private.key"
-        ca_file = "/home/chris/cs198/test_site/ca.crt"
+        cert_file = "/home/chris/cs198/NDSL-HMI/middleware/registration_authority/id_server.crt"
+        key_file = "/home/chris/cs198/NDSL-HMI/middleware/registration_authority/id_server.key"
+        ca_file = "/home/chris/cs198/NDSL-HMI/middleware/registration_authority/root-ca.crt"
 
         if action == "Send Request":
             device = Device.objects.get(id=int(request.POST.get("device-select")))
             print(device.id)
 
-            ca_url = "https://localhost:15000/sign"
-            headers = {"Content-Type": "application/json"}
-            payload = {
-                "PublicKey": device.public_key,
-                "IPAddress": device.ip,
-                "Subject": {
-                    "Country": "PH",
-                    "State": "Metro Manila",
-                    "Locality": "Quezon City",
-                    "Organization": "MyIoTProject",
-                    "CommonName": device.ip,
-                },
-            }
+            if device.public_key:
+                ca_url = "https://localhost:15000/sign"
+                headers = {"Content-Type": "application/json"}
+                payload = {
+                    "PublicKey": device.public_key,
+                    "IPAddress": device.ip,
+                    "Subject": {
+                        "Country": "PH",
+                        "State": "Metro Manila",
+                        "Locality": "Quezon City",
+                        "Organization": "MyIoTProject",
+                        "CommonName": device.ip,
+                    },
+                }
 
-            ca_response = requests.post(
-                ca_url,
-                json=payload,
-                headers=headers,
-                cert=(cert_file, key_file),
-                verify=ca_file
-                # verify=False
-            )
+                ca_response = requests.post(
+                    ca_url,
+                    json=payload,
+                    headers=headers,
+                    cert=(cert_file, key_file),
+                    verify=ca_file
+                    # verify=False
+                )
 
-            if ca_response.status_code == 200:
-                device.certificate = ca_response.text
-                device.save()
+                if ca_response.status_code == 200:
+                    device.certificate = ca_response.text
+                    device.save()
 
-                message = "Certificate available at /download-cert/" + str(device.mac)
+                    message = "Certificate available at /download-cert/" + str(device.mac)
 
-                return render(request, "select-device.html", {"success": message, 'devices': Device.objects.all()})
-            else:
-                return render(request, "select-device.html", {"error": "Failed to get certificate", 'devices': Device.objects.all()})
-            
-            # csr = request.FILES.get("csr")
-            # if not csr:
-            #     return render(request, "enter-csr.html", {"error": "No file uploaded"})
-            
-            # csr_data = csr.read()
-            # ca_url = "https://localhost:15000/sign"
-            # headers = {"Content-Type": "application/pem-csr"}
-            
-            # ca_response = requests.post(
-            #     ca_url,
-            #     data=csr_data,
-            #     headers=headers,
-            #     # cert=("/home/chris/cs198/test_site/id_server.crt", "/home/chris/cs198/test_site/id_server_private.key"),
-            #     # verify="/home/chris/cs198/test_site/ca.crt"
-            #     verify=False
-            # )
-            
-            # if ca_response.status_code == 200:
-            #     cert_data = ca_response.content
-            #     cert_filename = csr.name.replace(".csr", ".crt")
+                    return render(request, "select-device.html", {"success": message, 'devices': Device.objects.all()})
+                else:
+                    print(ca_response.text)
+                    return render(request, "select-device.html", {"error": "Failed to get certificate", 'devices': Device.objects.all()})
+            elif device.csr:
+                csr_data = device.csr
+                ca_url = "https://localhost:15000/sign"
+                headers = {"Content-Type": "application/pem-csr"}
+                
+                ca_response = requests.post(
+                    ca_url,
+                    data=csr_data,
+                    headers=headers,
+                    cert=(cert_file, key_file),
+                    verify=ca_file
+                    # verify=False
+                )
+                
+                if ca_response.status_code == 200:
+                    device.certificate = ca_response.text
+                    device.save()
 
-            #     # Return certificate to browser as a download
-            #     response = HttpResponse(cert_data, content_type="application/x509-cert")
-            #     response["Content-Disposition"] = f'attachment; filename="{cert_filename}"'
-            #     return response
-            # else:
-            #     return render(request, "select-device.html", {"error": "Failed to get certificate", 'devices': Device.objects.all()})
+                    message = "Certificate available at /download-cert/" + str(device.mac)
+
+                    return render(request, "select-device.html", {"success": message, 'devices': Device.objects.all()})
+                else:
+                    print(ca_response.text)
+                    return render(request, "select-device.html", {"error": "Failed to get certificate", 'devices': Device.objects.all()})
+
         elif action == "Clear All Devices":
             Device.objects.all().delete()
             return render(request, 'select-device.html', {'devices': Device.objects.all()})
@@ -155,11 +154,12 @@ def receive_device_data(request):
         ip = data.get('IP')
         mac = data.get('MAC')
         pk = data.get('PublicKey')
+        csr = data.get('CSR')
         print(ip,mac)
 
         device, created = Device.objects.update_or_create(
             mac=mac,
-            defaults={'ip':ip, 'public_key': pk},
+            defaults={'ip':ip, 'public_key': pk, 'csr':csr},
         )
 
         print(device.id)

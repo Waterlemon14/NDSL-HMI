@@ -22,3 +22,9 @@
 (ca directory) bash signClient.sh
 ```
 3. Copy client.crt from (ca/certs directory) to (IoT/go directory)
+
+## Registration Authority
+1. Copy id_server.csr from (middleware/registration_authority directory)
+
+## CA Server
+1. Copy ca_server.csr from (ca/server directory)

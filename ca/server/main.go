@@ -40,8 +40,8 @@ type CSRData struct {
 }
 
 func main() {
-	caCertPath := flag.String("ca-cert", "ca.crt", "Path to CA certificate (PEM)")
-	caKeyPath := flag.String("ca-key", "ca.key", "Path to CA private key (PEM, PKCS#1, PKCS#8 or EC)")
+	caCertPath := flag.String("ca-cert", "root-ca.crt", "Path to CA certificate (PEM)")
+	caKeyPath := flag.String("ca-key", "root-ca.key", "Path to CA private key (PEM, PKCS#1, PKCS#8 or EC)")
 	addr := flag.String("addr", ":15000", "HTTP listen address")
 	validDays := flag.Int("days", 365, "Validity of issued certs in days")
 	flag.Parse()
@@ -51,7 +51,7 @@ func main() {
 		log.Fatalf("failed to load CA: %v", err)
 	}
 
-	caCertPem, err := os.ReadFile("ca.crt")
+	caCertPem, err := os.ReadFile("root-ca.crt")
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -164,7 +164,7 @@ func main() {
 
 	http.HandleFunc("/sign", handler)
 	log.Printf("listening on %s, CA=%s", *addr, *caCertPath)
-	log.Fatal(server.ListenAndServeTLS("ca_server.crt", "ca_server_private.key"))
+	log.Fatal(server.ListenAndServeTLS("ca_server.crt", "ca_server.key"))
 }
 
 func httpError(w http.ResponseWriter, status int, format string, a ...interface{}) {

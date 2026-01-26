@@ -38,6 +38,8 @@ venv/
 *.key
 *.p12
 ida_partner.pem
+*.crt
+*.csr
 middleware/registration_authority/verification/idverification/mosip/config.toml
 
 # OS Specific
@@ -48,6 +50,7 @@ __pycache__/
 
 # DB files
 *.sqlite3
+*.db
 
 # Logs
 *.log
