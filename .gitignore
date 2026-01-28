@@ -40,7 +40,7 @@ venv/
 ida_partner.pem
 *.crt
 *.csr
-middleware/registration_authority/verification/idverification/mosip/config.toml
+config.toml
 
 # OS Specific
 *.DS_Store
