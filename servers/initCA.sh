@@ -8,7 +8,8 @@ openssl req -x509 -new -nodes -key root-ca.key \
 -sha256 -days 3650 -config root-ca.cnf -out root-ca.crt # can remove -nodes flag to encrypt private key with password you provide
 
 # Public copy of  CA cert
-cp certs/root-ca.crt ../IoT/go/root-ca.crt
-cp certs/root-ca.crt data/root-ca.crt
-cp certs/root-ca.crt registration_authority/root-ca.crt
-cp certs/root-ca.crt ca/root-ca.crt
+cp root-ca.crt ../IoT/go/root-ca.crt
+cp root-ca.crt data/root-ca.crt
+cp root-ca.crt ra/root-ca.crt
+cp root-ca.crt ca/root-ca.crt
+cp root-ca.key ca/root-ca.key

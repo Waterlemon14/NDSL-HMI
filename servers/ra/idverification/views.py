@@ -61,9 +61,9 @@ def select_device(request):
 
     if request.method == "POST":
         action = request.POST.get("action")
-        cert_file = "/home/chris/cs198/NDSL-HMI/middleware/registration_authority/id_server.crt"
-        key_file = "/home/chris/cs198/NDSL-HMI/middleware/registration_authority/id_server.key"
-        ca_file = "/home/chris/cs198/NDSL-HMI/middleware/registration_authority/root-ca.crt"
+        cert_file = "/home/chris/cs198/NDSL-HMI/servers/ra/id_server.crt"
+        key_file = "/home/chris/cs198/NDSL-HMI/servers/ra/id_server.key"
+        ca_file = "/home/chris/cs198/NDSL-HMI/servers/ra/root-ca.crt"
 
         if action == "Send Request":
             device = Device.objects.get(id=int(request.POST.get("device-select")))
