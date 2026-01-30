@@ -93,12 +93,12 @@ func main() {
 	}
 
 	tlsConfig := &tls.Config{
-		Certificates: []tls.Certificate{cert},
-		RootCAs:      rootCAPool,
-		ClientAuth:   tls.RequireAndVerifyClientCert,
-		ClientCAs:    rootCAPool,
-		MinVersion:   tls.VersionTLS12,
-		MaxVersion:   tls.VersionTLS12,
+		Certificates:           []tls.Certificate{cert},
+		RootCAs:                rootCAPool,
+		ClientAuth:             tls.RequireAndVerifyClientCert,
+		ClientCAs:              rootCAPool,
+		MinVersion:             tls.VersionTLS12,
+		SessionTicketsDisabled: true,
 	}
 
 	server := &http.Server{

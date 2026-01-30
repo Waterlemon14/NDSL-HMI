@@ -16,10 +16,18 @@ openssl req -new -nodes -newkey rsa:4096 -keyout data/server.key \
 
 # Sign Certificates
 # Client
-openssl x509 -req -in client.csr -copy_extensions=copy -CA root-ca.crt -CAkey root-ca.key -CAcreateserial -out ../IoT/client.crt -days 365 -sha256
+openssl x509 -req -in client.csr -copy_extensions=copy -CA ca/root-ca.crt -CAkey ca/root-ca.key -CAcreateserial -out ../IoT/client.crt -days 365 -sha256
 # CA
-openssl x509 -req -in ca_server.csr -copy_extensions=copy -CA root-ca.crt -CAkey root-ca.key -CAcreateserial -out ca/ca_server.crt -days 365 -sha256
+openssl x509 -req -in ca_server.csr -copy_extensions=copy -CA ca/root-ca.crt -CAkey ca/root-ca.key -CAcreateserial -out ca/ca_server.crt -days 365 -sha256
 # RA
-openssl x509 -req -in id_server.csr -copy_extensions=copy -CA root-ca.crt -CAkey root-ca.key -CAcreateserial -out ra/id_server.crt -days 365 -sha256
+openssl x509 -req -in id_server.csr -copy_extensions=copy -CA ca/root-ca.crt -CAkey ca/root-ca.key -CAcreateserial -out ra/id_server.crt -days 365 -sha256
 # Data Server
-openssl x509 -req -in server.csr -copy_extensions=copy -CA root-ca.crt -CAkey root-ca.key -CAcreateserial -out data/server.crt -days 365 -sha256
+openssl x509 -req -in server.csr -copy_extensions=copy -CA ca/root-ca.crt -CAkey ca/root-ca.key -CAcreateserial -out data/server.crt -days 365 -sha256
+
+rm -f client.csr
+rm -f ca_server.csr
+rm -f id_server.csr
+rm -f server.csr
+
+cp ../IoT/client.key ../IoT/go/client.key
+cp ../IoT/client.crt ../IoT/go/client.crt
