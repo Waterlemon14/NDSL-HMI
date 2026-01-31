@@ -8,6 +8,8 @@ colorama==0.4.6
 cryptography==43.0.3
 Django==5.2.8
 dynaconf==3.2.11
+factory_boy==3.3.3
+Faker==40.1.2
 idna==3.10
 jwcrypto==1.5.6
 mosip-auth-sdk @ git+https://github.com/mosip/ida-auth-sdk.git@f322c59868123c2ef9410b5a3fecfd5dcdfd56af
