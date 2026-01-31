@@ -3,6 +3,7 @@ from django.http import JsonResponse, HttpResponse
 from django.views.decorators.csrf import ensure_csrf_cookie, csrf_exempt
 import json
 import requests
+import ipaddress
 
 from idverification.mosip import otp_auth
 from idverification.models import Device
@@ -58,6 +59,21 @@ def select_device(request):
         return redirect("/")
     
     devices = Device.objects.all()
+    client_ip = int(ipaddress.ip_address(request.META.get('REMOTE_ADDR')))
+    device_match = []
+    for device in devices:
+        device_ip = int(ipaddress.ip_address(device.ip))
+        matched_prefix = 32 - (client_ip ^ device_ip).bit_length()
+        device_match.append((device, matched_prefix))
+    
+    device_match.sort(key=lambda x: x[1], reverse=True)
+    print(request.META.get('REMOTE_ADDR'))
+    for x in device_match: print(x[0].ip, x[1])
+    sorted_devices = [dev for dev, matched in device_match]
+    
+    likely = sorted_devices [:5]
+    others = sorted_devices [5:]
+
 
     if request.method == "POST":
         action = request.POST.get("action")
@@ -99,10 +115,10 @@ def select_device(request):
 
                     message = "Certificate available at /download-cert/" + str(device.mac)
 
-                    return render(request, "select-device.html", {"success": message, 'devices': Device.objects.all()})
+                    return render(request, "select-device.html", {"success": message, 'likely': likely, 'others': others})
                 else:
                     print(ca_response.text)
-                    return render(request, "select-device.html", {"error": "Failed to get certificate", 'devices': Device.objects.all()})
+                    return render(request, "select-device.html", {"error": "Failed to get certificate", 'likely': likely, 'others': others})
             elif device.csr:
                 csr_data = device.csr
                 ca_url = "https://localhost:15000/sign"
@@ -123,14 +139,14 @@ def select_device(request):
 
                     message = "Certificate available at /download-cert/" + str(device.mac)
 
-                    return render(request, "select-device.html", {"success": message, 'devices': Device.objects.all()})
+                    return render(request, "select-device.html", {"success": message, 'likely': likely, 'others': others})
                 else:
                     print(ca_response.text)
-                    return render(request, "select-device.html", {"error": "Failed to get certificate", 'devices': Device.objects.all()})
+                    return render(request, "select-device.html", {"error": "Failed to get certificate", 'likely': likely, 'others': others})
 
         elif action == "Clear All Devices":
             Device.objects.all().delete()
-            return render(request, 'select-device.html', {'devices': Device.objects.all()})
+            return render(request, 'select-device.html', {'likely': likely, 'others': others})
         elif action == "Ping Comms Server":
             commsurl = "https://192.168.0.212:8001/"
 
@@ -144,7 +160,7 @@ def select_device(request):
             print(f"Response: {response.text}")
 
 
-    return render(request, 'select-device.html', {'devices': Device.objects.all()})
+    return render(request, 'select-device.html', {'likely': likely, 'others': others})
 
 @csrf_exempt
 def receive_device_data(request):

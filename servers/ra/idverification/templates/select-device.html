@@ -13,9 +13,16 @@
         <div>
           <label for="device-select" class="text-black font-medium mb-3">Select your device</label> <br>
           <select name="device-select" id="device-select">
-          {% for device in devices %}
-            <option value="{{ device.id }}">IP: {{device.ip}}, MAC: {{device.mac}}, Manufacturer:: {{device.manufacturer}}</option>
-          {% endfor %}
+            <optgroup label="Likely your device">
+              {% for device in likely %}
+              <option value="{{ device.id }}">IP: {{device.ip}}, MAC: {{device.mac}}, Manufacturer:: {{device.manufacturer}}</option>
+              {% endfor %}
+            </optgroup>
+            <optgroup label="Other devices">
+              {% for device in others %}
+              <option value="{{ device.id }}">IP: {{device.ip}}, MAC: {{device.mac}}, Manufacturer:: {{device.manufacturer}}</option>
+              {% endfor %}
+            </optgroup>
           </select>
         </div>
         <input type="submit" name="action" value="Send Request" class="mt-4 px-4 py-2 text-white font-semibold bg-sky-500 rounded-xl hover:bg-sky-700"/>
