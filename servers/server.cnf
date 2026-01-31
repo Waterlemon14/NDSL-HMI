@@ -21,3 +21,4 @@ subjectAltName = @alt_names
 [alt_names]
 DNS.1 = localhost
 IP.1 = 10.147.36.131
+IP.2 = 169.254.161.138
