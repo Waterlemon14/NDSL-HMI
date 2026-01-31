@@ -21,8 +21,8 @@ import (
 )
 
 type Payload struct {
-	Temp int    `json:"temp"`
-	Time string `json:"time"`
+	Temp float64 `json:"temp"`
+	Time string  `json:"time"`
 }
 
 func loadCertificate(basePath string) (tls.Certificate, error) {
