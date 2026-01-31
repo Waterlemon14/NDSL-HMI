@@ -157,9 +157,20 @@ def receive_device_data(request):
         csr = data.get('CSR')
         print(ip,mac)
 
+        mac_response = requests.get("https://api.macvendors.com/"+mac)
+        if mac_response.status_code != 200:
+            print("Manufacturer cannot be determined")
+            return HttpResponse("Manufacturer cannot be determined", status=404)
+        manufacturer = mac_response.content.decode()
+
         device, created = Device.objects.update_or_create(
             mac=mac,
-            defaults={'ip':ip, 'public_key': pk, 'csr':csr},
+            defaults={
+                'ip':ip,
+                'manufacturer':manufacturer,
+                'public_key': pk,
+                'csr':csr
+            },
         )
 
         print(device.id)
