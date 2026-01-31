@@ -10,7 +10,7 @@ ST = .
 L = .
 O = .
 OU = .
-CN = localhost
+CN = Client
 
 [v3_extensions]
 basicConstraints = CA:FALSE
