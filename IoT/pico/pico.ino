@@ -20,11 +20,14 @@
 // const char* password = "passtest";
 
 // const char* ssid = "Dennis";
-const char* ssid = ">";
-const char* password = "ddddd123";
+// const char* ssid = ">";
+// const char* password = "ddddd123";
+
+const char* ssid     = "ndsgwifi";
+const char* password = "H1b2idinF2@";
 
 // Server Info
-const char* server_ip = "192.168.124.240";
+const char* server_ip = "10.147.36.131";
 const int idport = 8000;
 const int commsport = 8443;
 
@@ -197,32 +200,37 @@ void requestCert() {
   // Send Connect to csr server
   int responsecode = 0;
   while (responsecode != 202) {
+    delay(1000);
+    Serial.println("Sending device data...");
+
     if(client.connect(server_ip, idport)) {
         http.begin(client, server_ip, idport, "/receive-device-data/", false); // false = HTTP
         http.addHeader("Content-Type", "application/json");
         responsecode = http.POST(jsonPayload);
         Serial.printf("POST Response: %d\n", responsecode);
+
         http.end();
         client.stop();
     } else {
         Serial.println("Connection to ID server failed, retrying...");
     }
-    delay(2000);
   }
 
   // Poll for Certificate (Loop until 200 OK)
   responsecode = 0;
   while (responsecode != 200) {
-    delay(5000); 
+    delay(10000);
     Serial.println("Waiting for certificate...");
     
     if(client.connect(server_ip, idport)) {
         String url = "/download-cert/" + WiFi.macAddress() + "/";
+        Serial.println(url);
         http.begin(client, server_ip, idport, url, false);
         responsecode = http.GET();
         
         if (responsecode == 200) {
             clientCert = http.getString();
+            Serial.println(clientCert);
             if (writeFile("/client.crt", (const uint8_t*)clientCert.c_str(), clientCert.length()) == 0) {
                 Serial.println("Certificate downloaded and saved.");
             }
@@ -233,6 +241,7 @@ void requestCert() {
         client.stop();
     }
   }
+  // while(1);
 }
 
 // --- Memory Cleanup ---
@@ -288,8 +297,6 @@ void setup() {
   }
 
   // 7. Construct DER Private Key for BearSSL
-  // BearSSL expects a formatted ASN.1 structure, not just the raw scalar.
-  // This header sequence wraps the raw key into a standard format.
   uint8_t head[] = {0x30, 0x77, 0x02, 0x01, 0x01, 0x04, 0x20};
   uint8_t mid[]  = {0xa0, 0x0a, 0x06, 0x08, 0x2a, 0x86, 0x48, 0xce, 0x3d, 0x03, 0x01, 0x07, 0xa1, 0x44, 0x03, 0x42, 0x00, 0x04};
   
@@ -300,7 +307,7 @@ void setup() {
   memcpy(key_der + 57, pk, 64);
 
   // 8. Configure BearSSL Client
-  clearCerts();
+  // clearCerts();
   
   trustRoot = new BearSSL::X509List(caCert.c_str());
   clientCertList = new BearSSL::X509List(clientCert.c_str());
@@ -308,7 +315,8 @@ void setup() {
 
   unsigned allowed_usages = BR_KEYTYPE_KEYX | BR_KEYTYPE_SIGN; 
   unsigned cert_issuer_key_type = BR_KEYTYPE_RSA; 
-  secureclient.setTrustAnchors(trustRoot);
+  // secureclient.setTrustAnchors(trustRoot);
+  secureclient.setInsecure();
   secureclient.setClientECCert(clientCertList, deviceKey, allowed_usages, cert_issuer_key_type);
 
   Serial.print("Checking sk alignment: ");
@@ -323,11 +331,7 @@ void setup() {
 
 void loop() {
   if (WiFi.status() == WL_CONNECTED) {
-    // secureclient is already configured with the certs in setup()
-    
-    // Connect to the secure data server
     Serial.print("Connecting to Data Server... ");
-    // Note: Use IPAddress object or string. Comm port 8443 usually implies SSL.
     if (secureclient.connect(server_ip, commsport)) {
       Serial.println("Connected!");
 

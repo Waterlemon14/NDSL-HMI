@@ -19,12 +19,15 @@
 // const char* password = "passtest";
 
 // const char* ssid = "Dennis";
-const char* ssid = ">";
-const char* password = "ddddd123";
+// const char* ssid = ">";
+// const char* password = "ddddd123";
+
+const char* ssid     = "ndsgwigi";
+const char* password = "H1b2idinF2";
 
 // Server Info
-const char* server = "192.168.124.240";
-IPAddress host(192,168,124,240);
+const char* server = "10.147.36.131";
+IPAddress host(10,147,36,131);
 const int idport = 8000;
 const int commsport = 8443;
 
@@ -330,7 +333,7 @@ void loop() {
       secureclient.setInsecure();
 
       HTTPClient http;
-      if (http.begin(secureclient, "https://192.168.124.240:8443/data")) {
+      if (http.begin(secureclient, "https://10.147.36.131:8443/data")) {
         http.addHeader("Content-Type", "application/json");
 
         StaticJsonDocument<200> doc;

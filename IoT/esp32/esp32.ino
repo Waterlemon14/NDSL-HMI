@@ -24,13 +24,16 @@
 // const char* ssid     = "test";
 // const char* password = "passtest";
 
-const char* ssid     = ">";
-const char* password = "ddddd123";
+// const char* ssid     = ">";
+// const char* password = "ddddd123";
+
+const char* ssid     = "ndsgwifi";
+const char* password = "H1b2idinF2@";
 
 // Servers
-const char* serverUrl = "https://192.168.124.240:8443/data";
-const char* signUrl = "http://192.168.124.240:8000/receive-device-data/";
-const char* certDownloadUrl = "http://192.168.124.240:8000/download-cert/";
+const char* serverUrl = "https://10.147.36.131:8443/data";
+const char* signUrl = "http://10.147.36.131:8000/receive-device-data/";
+const char* certDownloadUrl = "http://10.147.36.131:8000/download-cert/";
 
 WiFiClientSecure client;
 HTTPClient https;
@@ -43,6 +46,7 @@ String client_key_str;
 
 float temp;
 struct tm timeinfo;
+time_t now;
 
 // File System Helpers
 String readFile(const char* path) {
@@ -142,16 +146,16 @@ void setClock() {
   configTime(0, 0, "pool.ntp.org", "time.nist.gov");
 
   Serial.print(F("Waiting for NTP time sync: "));
-  time_t nowSecs = time(nullptr);
-  while (nowSecs < 8 * 3600 * 2) {
+  now = time(nullptr);
+  while (now < 8 * 3600 * 2) {
     delay(500);
     Serial.print(F("."));
     yield();
-    nowSecs = time(nullptr);
+    now = time(nullptr);
   }
   Serial.println();
 
-  gmtime_r(&nowSecs, &timeinfo);
+  gmtime_r(&now, &timeinfo);
   Serial.print(F("Current time: "));
   Serial.print(asctime(&timeinfo));
 }
@@ -266,17 +270,39 @@ void loop() {
     while(true) {
       https.addHeader("Content-Type", "application/json");
 
-      // {"temp": float, "time": "string"}
-      // Note: "time" is sent as a string to match the Go `Time string` type
-      temp = 20.0 + (float)(esp_random() % 1000) / 100.0;
+      JsonDocument doc;
+      doc["temp"] = random(1500, 2101) / 100.0;
 
-      char timeStr[30];
-      strftime(timeStr, sizeof(timeStr), "%Y-%m-%dT%H:%M:%SZ", &timeinfo);
+      now = time(nullptr);
+      timeinfo = *localtime(&now);
+      char timeStr[20]; 
+      strftime(timeStr, sizeof(timeStr), "%Y-%m-%d %H:%M:%S", &timeinfo);
+      double temp = random(1500, 2101) / 100.0;
+      doc["temp"] = temp;
+      doc["time"] = timeStr;
+
+      // temp = 20.0 + (float)(esp_random() % 1000) / 100.0;
+
+      // now = time(nullptr);
+      // timeinfo = localtime(&now);
+
+      // char timeStr[30]; 
+      // strftime(timeStr, sizeof(timeStr), "%Y-%m-%d %H:%M:%S", &timeinfo);
+
+      // doc["temp"] = temp;
+      // doc["time"] = buffer;
+
+      // char timeStr[30];
+      // strftime(timeStr, sizeof(timeStr), "%Y-%m-%dT%H:%M:%SZ", &timeinfo);
+
+      String data;
+      serializeJson(doc, data);
       
       // Create JSON Payload
-      String jsonPayload = "{\"temp\": " + String(temp) + ", \"time\": \"" + String(timeStr) + "\"}";
+      // String jsonPayload = "{\"temp\": " + String(temp) + ", \"time\": \"" + String(timeStr) + "\"}";
       
-      int httpResponseCode = https.POST(jsonPayload);
+      // int httpResponseCode = https.POST(jsonPayload);
+      int httpResponseCode = https.POST(data);
 
       if (httpResponseCode > 0) {
         Serial.printf("Success: %d\n", httpResponseCode);
