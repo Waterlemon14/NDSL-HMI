@@ -333,7 +333,7 @@ void loop() {
 
       // Prepare JSON Data
       JsonDocument doc;
-      doc["temp"] = random(15, 25);
+      doc["temp"] = random(1500, 2101) / 100.0;
       doc["device"] = "PicoW";
       
       String payload;

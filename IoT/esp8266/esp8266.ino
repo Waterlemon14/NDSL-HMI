@@ -204,7 +204,7 @@ void requestCert() {
   }
 
   responsecode = 0;
-  while (responsecode != 200){/Users/eisenii/Desktop/Projects/1NDSL-HMI/servers/ra/verification/settings.py
+  while (responsecode != 200){
     delay(10000);
     Serial.println("Waiting for certificate...");
     http.begin(client, server, idport, "/download-cert/" + WiFi.macAddress() + "/");
@@ -330,7 +330,7 @@ void loop() {
       secureclient.setInsecure();
 
       HTTPClient http;
-      if (http.begin(secureclient, "https://10.141.173.223:8443/data")) {
+      if (http.begin(secureclient, "https://192.168.124.240:8443/data")) {
         http.addHeader("Content-Type", "application/json");
 
         StaticJsonDocument<200> doc;
@@ -338,7 +338,7 @@ void loop() {
         struct tm* timeinfo = localtime(&now);
         char buffer[20]; 
         strftime(buffer, sizeof(buffer), "%Y-%m-%d %H:%M:%S", timeinfo);
-        int temp = random(15, 21);
+        double temp = random(1500, 2101) / 100.0;
         doc["temp"] = temp;
         doc["time"] = buffer;
         
