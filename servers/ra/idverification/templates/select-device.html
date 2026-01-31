@@ -14,7 +14,7 @@
           <label for="device-select" class="text-black font-medium mb-3">Select your device</label> <br>
           <select name="device-select" id="device-select">
           {% for device in devices %}
-            <option value="{{ device.id }}">IP: {{device.ip}}, MAC: {{device.mac}}</option>
+            <option value="{{ device.id }}">IP: {{device.ip}}, MAC: {{device.mac}}, Manufacturer:: {{device.manufacturer}}</option>
           {% endfor %}
           </select>
         </div>
