@@ -12,5 +12,5 @@ OU = .
 CN = Root CA
 
 [v3_extensions]
-basicConstraints = CA:TRUE
+basicConstraints = critical, CA:TRUE
 keyUsage = keyCertSign, cRLSign
