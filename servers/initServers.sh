@@ -6,13 +6,13 @@ openssl req -new -nodes -newkey rsa:4096 -keyout ../IoT/client.key \
 -out client.csr -config client.cnf
 # CA
 openssl req -new -nodes -newkey rsa:4096 -keyout ca/ca_server.key \
--out ca_server.csr -config server.cnf
+-out ca_server.csr -config ca.cnf
 # RA
 openssl req -new -nodes -newkey rsa:4096 -keyout ra/id_server.key \
--out id_server.csr -config server.cnf
+-out id_server.csr -config ra.cnf
 # Data Server
 openssl req -new -nodes -newkey rsa:4096 -keyout data/server.key \
--out server.csr -config server.cnf
+-out server.csr -config data.cnf
 
 # Sign Certificates
 # Client
