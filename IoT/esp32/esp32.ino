@@ -1,3 +1,6 @@
+#define NORMALOP  0
+#define RESET     1
+
 // Network
 #include <WiFi.h>
 #include <WiFiClientSecure.h>
@@ -24,16 +27,16 @@
 // const char* ssid     = "test";
 // const char* password = "passtest";
 
-// const char* ssid     = ">";
-// const char* password = "ddddd123";
+const char* ssid     = "Paella🥘";
+const char* password = "testpasstest";
 
-const char* ssid     = "ndsgwifi";
-const char* password = "H1b2idinF2@";
+// const char* ssid     = "ndsgwifi";
+// const char* password = "H1b2idinF2@";
 
 // Servers
-const char* serverUrl = "https://10.147.36.131:8443/data";
-const char* signUrl = "http://10.147.36.131:8000/receive-device-data/";
-const char* certDownloadUrl = "http://10.147.36.131:8000/download-cert/";
+const char* serverUrl = "https://172.20.10.2:8443/data";
+const char* signUrl = "http://172.20.10.2:8000/receive-device-data/";
+const char* certDownloadUrl = "http://172.20.10.2:8000/download-cert/";
 
 WiFiClientSecure client;
 HTTPClient https;
@@ -47,6 +50,9 @@ String client_key_str;
 float temp;
 struct tm timeinfo;
 time_t now;
+
+JsonDocument doc;
+String data;
 
 // File System Helpers
 String readFile(const char* path) {
@@ -79,13 +85,7 @@ void writeFile(const char* path, const char* content) {
   file.close();
 }
 
-// Generates CSR if key and client cert are not found
-void generateCSR() {
-  if (SPIFFS.exists("/client.key") && SPIFFS.exists("/client.crt")) {
-    Serial.println("Key and client cert exist");
-    return;
-  }
-
+void generateKeyAndCSR() {
   mbedtls_pk_context key;
   mbedtls_x509write_csr csr;
   mbedtls_entropy_context entropy;
@@ -139,6 +139,8 @@ void generateCSR() {
   mbedtls_x509write_csr_free(&csr);
   mbedtls_ctr_drbg_free(&ctr_drbg);
   mbedtls_entropy_free(&entropy);
+
+  Serial.println("Generated Keys and CSR");
 }
 
 // Synch Helper
@@ -184,40 +186,48 @@ int requestCert() {
   String jsonPayload;
   serializeJson(doc, jsonPayload);
 
+  // Device Auth Checkpoint
   int responsecode = 0;
+
+  http.begin(signUrl);
   while (responsecode != 202){
-    delay(1000);
+    
     Serial.println("Sending device data...");
-    http.begin(signUrl);
     http.addHeader("Content-Type", "application/json");
     responsecode = http.POST(jsonPayload);
     Serial.println(responsecode);
-    http.end();
+    
     Serial.printf("Error sending CSR: %d - %s\n", 
                   responsecode, http.errorToString(responsecode).c_str());
+    delay(10000);
   }
+  http.end();
 
+  // Device Authenticated
   responsecode = 0;
+
+  http.begin(certDownloadUrl + WiFi.macAddress() + "/");
   while (responsecode != 200){
     delay(10000);
     Serial.println("Waiting for certificate...");
-    http.begin(certDownloadUrl + WiFi.macAddress() + "/");
+    
     responsecode = http.GET();
     if (responsecode == 200){
       String signedCert = http.getString();
       Serial.println("Certificate signed successfully!");
       writeFile("/client.crt", signedCert.c_str());
     }
-    http.end();
     Serial.printf("Error sending CSR: %d - %s\n", 
                   responsecode, http.errorToString(responsecode).c_str());
   }
+  http.end();
 
   return 0;
 }
 
 void setup() {
   Serial.begin(115200);
+  delay(2000);
   while(!Serial);
 
   // 1. Mount SPIFFS
@@ -225,14 +235,30 @@ void setup() {
     Serial.println("An Error has occurred while mounting SPIFFS");
     return;
   }
+  Serial.println("SPIFFS Mounted");
 
   // Remove previously generated keys and cert if needed
-  SPIFFS.remove("/client.key");
-  SPIFFS.remove("/client.csr");
-  SPIFFS.remove("/client.crt");
 
-  // 2. Generate CSR
-  generateCSR();
+  Serial.print("Normal Operation (0), Reset (1): ");
+  int mode = Serial.parseInt();
+
+  while (Serial.available() == 0) {
+  }
+
+  mode = Serial.parseInt(); 
+
+  if (mode == RESET) {
+    SPIFFS.remove("/client.key");
+    SPIFFS.remove("/client.csr");
+    SPIFFS.remove("/client.crt");
+    Serial.println("Board credentials reset");
+    while(1);
+  }
+
+  Serial.println(SPIFFS.exists("/client.key"));
+
+  // 2. Generate key and CSR if key does not exist
+  if (!SPIFFS.exists("/client.key")) generateKeyAndCSR();
 
   // 3. Connect to WiFi
   WiFi.begin(ssid, password);
@@ -247,8 +273,11 @@ void setup() {
 
   // 5. Request client cert if not found or initial boot
   if (!SPIFFS.exists("/client.crt")) requestCert();
+
+  // 6. Delete csr after certificate creation
+  SPIFFS.remove("/client.csr");
   
-  // 6. Load Certs and keys
+  // 7. Load Certs and keys
   ca_cert_str     = readFile("/root-ca.crt");
   client_cert_str = readFile("/client.crt");
   client_key_str  = readFile("/client.key");
@@ -258,7 +287,7 @@ void setup() {
     while(1) delay(1000); // Halt
   }
 
-  // 7. Apply Certs to Client
+  // 8. Apply Certs to Client
   client.setCACert(ca_cert_str.c_str());
   client.setCertificate(client_cert_str.c_str());
   client.setPrivateKey(client_key_str.c_str());
@@ -267,53 +296,32 @@ void setup() {
 void loop() {
   Serial.print("Connecting to server... ");
   if (https.begin(client, serverUrl)) {
-    while(true) {
-      https.addHeader("Content-Type", "application/json");
+    https.addHeader("Content-Type", "application/json");
 
-      JsonDocument doc;
-      doc["temp"] = random(1500, 2101) / 100.0;
+    doc["temp"] = random(1500, 2101) / 100.0;
 
-      now = time(nullptr);
-      timeinfo = *localtime(&now);
-      char timeStr[20]; 
-      strftime(timeStr, sizeof(timeStr), "%Y-%m-%d %H:%M:%S", &timeinfo);
-      double temp = random(1500, 2101) / 100.0;
-      doc["temp"] = temp;
-      doc["time"] = timeStr;
+    now = time(nullptr);
+    timeinfo = *localtime(&now);
+    char timeStr[20]; 
+    strftime(timeStr, sizeof(timeStr), "%Y-%m-%d %H:%M:%S", &timeinfo);
+    double temp = random(1500, 2101) / 100.0;
 
-      // temp = 20.0 + (float)(esp_random() % 1000) / 100.0;
+    doc["temp"] = temp;
+    doc["time"] = timeStr;
 
-      // now = time(nullptr);
-      // timeinfo = localtime(&now);
+    
+    serializeJson(doc, data);
+    
+    int httpResponseCode = https.POST(data);
 
-      // char timeStr[30]; 
-      // strftime(timeStr, sizeof(timeStr), "%Y-%m-%d %H:%M:%S", &timeinfo);
-
-      // doc["temp"] = temp;
-      // doc["time"] = buffer;
-
-      // char timeStr[30];
-      // strftime(timeStr, sizeof(timeStr), "%Y-%m-%dT%H:%M:%SZ", &timeinfo);
-
-      String data;
-      serializeJson(doc, data);
-      
-      // Create JSON Payload
-      // String jsonPayload = "{\"temp\": " + String(temp) + ", \"time\": \"" + String(timeStr) + "\"}";
-      
-      // int httpResponseCode = https.POST(jsonPayload);
-      int httpResponseCode = https.POST(data);
-
-      if (httpResponseCode > 0) {
-        Serial.printf("Success: %d\n", httpResponseCode);
-        Serial.println(https.getString());
-      } else {
-        Serial.printf("Error: %s\n", https.errorToString(httpResponseCode).c_str());
-      }
-      delay(5000);
+    if (httpResponseCode > 0) {
+      Serial.printf("Success: %d\n", httpResponseCode);
+      Serial.println(https.getString());
+    } else {
+      Serial.printf("Error: %s\n", https.errorToString(httpResponseCode).c_str());
     }
     https.end();
+    delay(3000);
   }
-
-  // delay(2000);
+  delay(2000);
 }

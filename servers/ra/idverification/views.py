@@ -1,12 +1,24 @@
+from datetime import timedelta
+
+import random
+
 from django.shortcuts import render, redirect
 from django.http import JsonResponse, HttpResponse
 from django.views.decorators.csrf import ensure_csrf_cookie, csrf_exempt
+from django.utils import timezone
+
 import json
 import requests
 import ipaddress
 
 from idverification.mosip import otp_auth
 from idverification.models import Device
+
+basePathToRepo = "/Users/eisenii/Desktop/Projects/1NDSL-HMI/"
+
+registeringMACs = []
+
+CHALLENGE_COUNT_THRESHOLD = 3
 
 # Create your views here.
 @ensure_csrf_cookie
@@ -74,19 +86,39 @@ def select_device(request):
     likely = sorted_devices [:5]
     others = sorted_devices [5:]
 
+    if request.method != "POST":
+        return render(request, 'select-device.html', {'likely': likely, 'others': others})
 
-    if request.method == "POST":
-        action = request.POST.get("action")
-        cert_file = "/home/chris/cs198/NDSL-HMI/servers/ra/id_server.crt"
-        key_file = "/home/chris/cs198/NDSL-HMI/servers/ra/id_server.key"
-        ca_file = "/home/chris/cs198/NDSL-HMI/servers/ra/root-ca.crt"
+    action = request.POST.get("action")
+    cert_file = basePathToRepo+"servers/ra/id_server.crt"
+    key_file = basePathToRepo+"servers/ra/id_server.key"
+    ca_file = basePathToRepo+"servers/ra/root-ca.crt"
 
-        if action == "Send Request":
-            device = Device.objects.get(id=int(request.POST.get("device-select")))
-            print(device.id)
+    if action == "Send Request":
+        device = Device.objects.get(id=int(request.POST.get("device-select")))
+        print(device.id)
+
+        # Check challenges
+        if device.challengeCount != CHALLENGE_COUNT_THRESHOLD:
+            # initialize challenge sequence
+            interval = random.randint(11, 20)
+            message = "Starting Human Challenges\nReset your device with MAC Address: " + \
+                str(device.mac) + \
+                ", and after " + str(interval) + " seconds of downtime, reconnect within 30 seconds.\n" + \
+                "Count: " + str(device.challengeCount)
+
+            device, _ = Device.objects.update_or_create(
+                mac=device.mac,
+                defaults={'interval': interval},
+            )
+
+            return render(request, "select-device.html", {"success": message, 'likely': likely, 'others': others})
+
+        else:
+
+            ca_url = "https://localhost:15000/sign"
 
             if device.public_key:
-                ca_url = "https://localhost:15000/sign"
                 headers = {"Content-Type": "application/json"}
                 payload = {
                     "PublicKey": device.public_key,
@@ -100,101 +132,87 @@ def select_device(request):
                     },
                 }
 
-                ca_response = requests.post(
-                    ca_url,
-                    json=payload,
-                    headers=headers,
-                    cert=(cert_file, key_file),
-                    verify=ca_file
-                    # verify=False
-                )
-
-                if ca_response.status_code == 200:
-                    device.certificate = ca_response.text
-                    device.save()
-
-                    message = "Certificate available at /download-cert/" + str(device.mac)
-
-                    return render(request, "select-device.html", {"success": message, 'likely': likely, 'others': others})
-                else:
-                    print(ca_response.text)
-                    return render(request, "select-device.html", {"error": "Failed to get certificate", 'likely': likely, 'others': others})
             elif device.csr:
-                csr_data = device.csr
-                ca_url = "https://localhost:15000/sign"
                 headers = {"Content-Type": "application/pem-csr"}
-                
-                ca_response = requests.post(
-                    ca_url,
-                    data=csr_data,
-                    headers=headers,
-                    cert=(cert_file, key_file),
-                    verify=ca_file
-                    # verify=False
-                )
-                
-                if ca_response.status_code == 200:
-                    device.certificate = ca_response.text
-                    device.save()
+                payload = device.csr
 
-                    message = "Certificate available at /download-cert/" + str(device.mac)
+            else:
+                return render(request, "select-device.html", {"error": "Failed to get device info", 'likely': likely, 'others': others})
 
-                    return render(request, "select-device.html", {"success": message, 'likely': likely, 'others': others})
-                else:
-                    print(ca_response.text)
-                    return render(request, "select-device.html", {"error": "Failed to get certificate", 'likely': likely, 'others': others})
-
-        elif action == "Clear All Devices":
-            Device.objects.all().delete()
-            return render(request, 'select-device.html', {'likely': likely, 'others': others})
-        elif action == "Ping Comms Server":
-            commsurl = "https://192.168.0.212:8001/"
-
-            response = requests.post(
-                commsurl,
-                json={"ping": "test"},
+            ca_response = requests.post(
+                ca_url,
+                data=payload,
+                headers=headers,
                 cert=(cert_file, key_file),
                 verify=ca_file
+                # verify=False
             )
-            print(f"Status: {response.status_code}")
-            print(f"Response: {response.text}")
+                
+            if ca_response.status_code == 200:
+                device.certificate = ca_response.text
+                device.save()
 
+                message = "Certificate available at /download-cert/" + str(device.mac)
 
-    return render(request, 'select-device.html', {'likely': likely, 'others': others})
+                return render(request, "select-device.html", {"success": message, 'likely': likely, 'others': others})
+
+            else:
+                print(ca_response.text)
+                return render(request, "select-device.html", {"error": "Failed to get certificate", 'likely': likely, 'others': others})
+
+    elif action == "Clear All Devices":
+        Device.objects.all().delete()
+        return render(request, 'select-device.html', {'likely': likely, 'others': others})
+
+    return render(request, "select-device.html", {"error": "Chosen Error is not allowed", 'likely': likely, 'others': others})
 
 @csrf_exempt
 def receive_device_data(request):
     response = HttpResponse()
-    if request.method == "POST":
-        data = json.loads(request.body)
-        ip = data.get('IP')
-        mac = data.get('MAC')
-        pk = data.get('PublicKey')
-        csr = data.get('CSR')
-        print(ip,mac)
-
-        mac_response = requests.get("https://api.macvendors.com/"+mac)
-        if mac_response.status_code != 200:
-            print("Manufacturer cannot be determined")
-            return HttpResponse("Manufacturer cannot be determined", status=404)
-        manufacturer = mac_response.content.decode()
-
-        device, created = Device.objects.update_or_create(
-            mac=mac,
-            defaults={
-                'ip':ip,
-                'manufacturer':manufacturer,
-                'public_key': pk,
-                'csr':csr
-            },
-        )
-
-        print(device.id)
-        
-        response.status_code = 202
+    if request.method != "POST":
+        response.status_code = 400
         return response
 
-    response.status_code = 400
+    data = json.loads(request.body)
+    ip = data.get('IP')
+    mac = data.get('MAC')
+    pk = data.get('PublicKey')
+    csr = data.get('CSR')
+    challengeCount = 0
+    print(ip,mac)
+
+    mac_response = requests.get("https://api.macvendors.com/"+mac)
+    if mac_response.status_code != 200:
+        print("Manufacturer cannot be determined")
+        return HttpResponse("Manufacturer cannot be determined", status=404)
+    manufacturer = mac_response.content.decode()
+    
+    device = Device.objects.filter(mac=mac).first()
+
+    if device:
+        start = device.updatedAt + timedelta(seconds=device.interval)
+        end = start + timedelta(seconds=30)
+
+        if start <= timezone.now() <= end:
+            challengeCount = device.challengeCount + 1
+    
+    device, _ = Device.objects.update_or_create(
+        mac=mac,
+        defaults={
+            'ip':ip, 
+            'manufacturer':manufacturer,
+            'public_key': pk, 
+            'csr':csr, 
+            'challengeCount': challengeCount},
+    )
+
+    print(device.id)
+
+    if device.challengeCount == CHALLENGE_COUNT_THRESHOLD:
+        response.status_code = 202
+    else:
+        response.status_code = 201
+
     return response
 
 def download_cert(request, mac_address):
