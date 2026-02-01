@@ -9,3 +9,4 @@ class Device(models.Model):
     manufacturer = models.TextField(blank=False, null=True)
     csr = models.TextField(blank=True, null=True)
     certificate = models.TextField(blank=True, null=True)
+    last_active = models.DateTimeField(blank=True, null=True)

@@ -1,0 +1,19 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <title>HMI Registration</title>
+    <script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+  </head>
+  <body class="bg-gray-100 flex items-center justify-center min-h-screen">
+    <div class="bg-white shadow-lg rounded-xl p-8 w-[650px] max-w-full text-center items-center">
+      <h1 class="text-xl font-semibold mb-3">Verify Ownership Of Device</h1>
+      <p id="info" class="text-black font-normal mb-3">Disconnect your device now</p>
+      <button id="start-challenge" onclick="startChallenge()">Start Challenge</button>
+      <div id="data-holder" data-deviceid="{{ device.id }}"></div>
+    </div>
+
+    {% load static %}
+    <script src="{% static 'challenge.js' %}"></script>
+  </body>
+</html>
