@@ -16,6 +16,8 @@ from idverification.models import Device
 
 basePathToRepo = "/Users/eisenii/Desktop/Projects/1NDSL-HMI/"
 
+ca_url = "https://localhost:15000/sign"
+
 registeringMACs = []
 
 CHALLENGE_COUNT_THRESHOLD = 3
@@ -79,7 +81,7 @@ def select_device(request):
         device_match.append((device, matched_prefix))
     
     device_match.sort(key=lambda x: x[1], reverse=True)
-    print(request.META.get('REMOTE_ADDR'))
+    # print(request.META.get('REMOTE_ADDR'))
     for x in device_match: print(x[0].ip, x[1])
     sorted_devices = [dev for dev, matched in device_match]
     
@@ -116,7 +118,8 @@ def select_device(request):
 
         else:
 
-            ca_url = "https://localhost:15000/sign"
+            print(device.public_key)
+            print(device.ip)
 
             if device.public_key:
                 headers = {"Content-Type": "application/json"}
@@ -131,23 +134,30 @@ def select_device(request):
                         "CommonName": device.ip,
                     },
                 }
-
+                ca_response = requests.post(
+                    ca_url,
+                    json=payload,
+                    headers=headers,
+                    cert=(cert_file, key_file),
+                    verify=ca_file
+                    # verify=False
+                )
+                    
             elif device.csr:
                 headers = {"Content-Type": "application/pem-csr"}
                 payload = device.csr
+                ca_response = requests.post(
+                    ca_url,
+                    data=payload,
+                    headers=headers,
+                    cert=(cert_file, key_file),
+                    verify=ca_file
+                    # verify=False
+                )
 
             else:
                 return render(request, "select-device.html", {"error": "Failed to get device info", 'likely': likely, 'others': others})
 
-            ca_response = requests.post(
-                ca_url,
-                data=payload,
-                headers=headers,
-                cert=(cert_file, key_file),
-                verify=ca_file
-                # verify=False
-            )
-                
             if ca_response.status_code == 200:
                 device.certificate = ca_response.text
                 device.save()
@@ -180,12 +190,6 @@ def receive_device_data(request):
     csr = data.get('CSR')
     challengeCount = 0
     print(ip,mac)
-
-    mac_response = requests.get("https://api.macvendors.com/"+mac)
-    if mac_response.status_code != 200:
-        print("Manufacturer cannot be determined")
-        return HttpResponse("Manufacturer cannot be determined", status=404)
-    manufacturer = mac_response.content.decode()
     
     device = Device.objects.filter(mac=mac).first()
 
@@ -195,6 +199,15 @@ def receive_device_data(request):
 
         if start <= timezone.now() <= end:
             challengeCount = device.challengeCount + 1
+
+        manufacturer = device.manufacturer
+
+    else:
+        mac_response = requests.get("https://api.macvendors.com/"+mac)
+        if mac_response.status_code != 200:
+            print("Manufacturer cannot be determined")
+            return HttpResponse("Manufacturer cannot be determined", status=404)
+        manufacturer = mac_response.content.decode()
     
     device, _ = Device.objects.update_or_create(
         mac=mac,
@@ -205,6 +218,8 @@ def receive_device_data(request):
             'csr':csr, 
             'challengeCount': challengeCount},
     )
+
+    print(device.updatedAt, device.challengeCount)
 
     print(device.id)
 
