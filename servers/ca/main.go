@@ -89,7 +89,10 @@ func main() {
 		csr, err := parseCSR(body)
 		if err != nil {
 			err := json.Unmarshal(body, &bodyjson)
+
+			fmt.Printf("%s\n", body)
 			if err != nil {
+				log.Println(err)
 				httpError(w, http.StatusBadRequest, "invalid request")
 				return
 			}
