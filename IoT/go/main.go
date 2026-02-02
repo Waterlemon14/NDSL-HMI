@@ -11,7 +11,7 @@ import (
 	"fmt"
 	"io"
 	"log"
-	"math/rand"
+	"math/rand/v2"
 	"net/http"
 	"time"
 
@@ -25,8 +25,8 @@ import (
 )
 
 type Payload struct {
-	Temp int    `json:"temp"`
-	Time string `json:"time"`
+	Temp float64 `json:"temp"`
+	Time string  `json:"time"`
 }
 
 func loadCertificate(basePath string) (tls.Certificate, error) {
@@ -80,24 +80,24 @@ func main() {
 	ticker := time.NewTicker(500 * time.Millisecond)
 	defer ticker.Stop()
 
-	min, max := 15, 20
-	var temp int
+	min, max := 15.00, 20.00
+	var temp float64
 
 	var start time.Time
 
-	// interval := time.Now()
+	interval := time.Now()
 
 	for range ticker.C {
 		// 5 seconds sending, 5 seconds pause loop
-		// if time.Since(interval) >= 5*time.Second {
-		// 	fmt.Println("")
-		// 	fmt.Printf("%sPause%s\n", "\033[33m", "\033[0m")
-		// 	fmt.Println("")
-		// 	time.Sleep(5 * time.Second)
-		// 	interval = time.Now()
-		// }
+		if time.Since(interval) >= 8*time.Second {
+			fmt.Println("")
+			fmt.Printf("%sPause%s\n", "\033[33m", "\033[0m")
+			fmt.Println("")
+			time.Sleep(8 * time.Second)
+			interval = time.Now()
+		}
 
-		temp = rand.Intn(max-min+1) + min
+		temp = min + rand.Float64()*(max-min)
 
 		payload := Payload{
 			Temp: temp,
