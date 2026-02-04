@@ -60,6 +60,18 @@ function endChallenge() {
         if (timer <= 0) {
           clearInterval(countdown);
           document.getElementById('info').innerText = 'Device failed current test';
+          fetch(`/check-status/${deviceID}/`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'X-CSRFToken': csrftoken
+            },
+            body: JSON.stringify({ action: 'fail' })
+          }).then(response => response.json())
+          .then(data => {
+            count = data.count;
+            document.getElementById('counter').innerText = `Challenge Counter: ${count}`;
+          });
         } else {
           document.getElementById('info').innerText = `Reconnect your device within ${timer} seconds`;
         }
@@ -85,9 +97,9 @@ function endChallenge() {
         });
       }, 1000);
     } else {
-      console.error("Failed disconnect")
+      console.error("Failed disconnect");
       document.getElementById('info').innerText = 'Device failed current test';
-      document.getElementById('counter').innerText = `Challenge Counter: ${count}`
+      document.getElementById('counter').innerText = `Challenge Counter: ${count}`;
     }
   });
 }

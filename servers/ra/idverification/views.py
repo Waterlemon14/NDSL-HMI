@@ -80,6 +80,8 @@ def select_device(request):
         elif action == "Clear All Devices":
             Device.objects.all().delete()
             return render(request, 'select-device.html', {'likely': likely, 'others': others})
+    
+    return render(request, 'select-device.html', {'likely': likely, 'others': others})
 
 @csrf_exempt
 def receive_device_data(request):
