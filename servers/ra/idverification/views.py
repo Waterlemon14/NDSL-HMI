@@ -4,6 +4,7 @@ from django.views.decorators.csrf import ensure_csrf_cookie, csrf_exempt
 from django.utils import timezone
 from django.utils.dateparse import parse_datetime
 from datetime import timedelta
+
 import json
 import requests
 import ipaddress
@@ -12,6 +13,13 @@ import random
 from idverification.mosip import otp_auth
 from idverification.models import Device
 from idverification.helper import get_select_list
+
+# basePathToRepo = "/Users/eisenii/Desktop/Projects/1NDSL-HMI/"
+basePathToRepo = "/home/chris/cs198/NDSL-HMI/"
+
+registeringMACs = []
+
+CHALLENGE_COUNT_THRESHOLD = 3
 
 # Create your views here.
 @ensure_csrf_cookie
@@ -68,91 +76,73 @@ def select_device(request):
     if request.method == "POST":
         action = request.POST.get("action")
         if action == "Request Certificate":
-            request.session["score"] = 0
-            request.session["attempt"] = 1
             return redirect("/ownership-challenge/" + request.POST.get("device-select"))
         elif action == "Clear All Devices":
             Device.objects.all().delete()
             return render(request, 'select-device.html', {'likely': likely, 'others': others})
-        elif action == "Ping Comms Server":
-            commsurl = "https://192.168.0.212:8001/"
-
-            response = requests.post(
-                commsurl,
-                json={"ping": "test"},
-                cert=(cert_file, key_file),
-                verify=ca_file
-            )
-            print(f"Status: {response.status_code}")
-            print(f"Response: {response.text}")
-
-    return render(request, 'select-device.html', {'likely': likely, 'others': others})
 
 @csrf_exempt
 def receive_device_data(request):
     response = HttpResponse()
+
     if request.method == "POST":
         data = json.loads(request.body)
         ip = data.get('IP')
         mac = data.get('MAC')
         pk = data.get('PublicKey')
         csr = data.get('CSR')
+        challengeCount = 0
         print(ip,mac)
+        
+        device = Device.objects.filter(mac=mac).first()
 
-        mac_response = requests.get("https://api.macvendors.com/"+mac)
-        if mac_response.status_code != 200:
-            print("Manufacturer cannot be determined")
-            return HttpResponse("Manufacturer cannot be determined", status=404)
-        manufacturer = mac_response.content.decode()
-
-        now = timezone.now()
-
-        device, created = Device.objects.update_or_create(
+        if device:
+            challengeCount = device.challengeCount        
+            manufacturer = device.manufacturer
+        
+        else:
+            mac_response = requests.get("https://api.macvendors.com/"+mac)
+            if mac_response.status_code != 200:
+                print("Manufacturer cannot be determined: ", mac_response.status_code)
+                return HttpResponse("Manufacturer cannot be determined", status=404)
+            manufacturer = mac_response.content.decode()
+        
+        device, _ = Device.objects.update_or_create(
             mac=mac,
             defaults={
-                'ip':ip,
+                'ip':ip, 
                 'manufacturer':manufacturer,
-                'public_key': pk,
-                'csr':csr,
-                'last_active':now,
-            },
+                'public_key': pk, 
+                'csr':csr, 
+                'challengeCount': challengeCount,
+                },
         )
 
-        print(device.id)
-        
-        response.status_code = 202
-        return response
+        print("Device",device.id,"Challenge Count: ", device.challengeCount, "updatedAt: ", device.updatedAt)
 
+        if device.challengeCount == CHALLENGE_COUNT_THRESHOLD:
+            response.status_code = 202
+        else:
+            response.status_code = 201
+
+        return response
+    
     response.status_code = 400
     return response
 
 def download_cert(request, mac_address):
     device = Device.objects.get(mac=mac_address)
-    print(timezone.localtime(device.last_active))
-    now = timezone.now()
-    device.last_active = now
-    device.save()
-    print(timezone.localtime(device.last_active))
-
     if device.certificate:
         return HttpResponse(device.certificate, content_type="application/x-pem-file")
-    return HttpResponse("Cert not ready", status=404)
 
-def ownership_challenge(request, device_id):
-    device = Device.objects.get(id=device_id)
-    print(device.ip)
-    
-    score = request.session["score"]
-    attempt = request.session["attempt"]
-    
-    if score == 3:
-        likely, others = get_select_list(request)
-        cert_file = "/home/chris/cs198/NDSL-HMI/servers/ra/id_server.crt"
-        key_file = "/home/chris/cs198/NDSL-HMI/servers/ra/id_server.key"
-        ca_file = "/home/chris/cs198/NDSL-HMI/servers/ra/root-ca.crt"
+    elif device.challengeCount == CHALLENGE_COUNT_THRESHOLD:
+        ca_url = "https://localhost:15000/sign"
+
+        cert_file = basePathToRepo+"servers/ra/id_server.crt"
+        key_file = basePathToRepo+"servers/ra/id_server.key"
+        ca_file = basePathToRepo+"servers/ra/root-ca.crt"
 
         if device.public_key:
-            ca_url = "https://localhost:15000/sign"
             headers = {"Content-Type": "application/json"}
             payload = {
                 "PublicKey": device.public_key,
@@ -175,71 +165,94 @@ def ownership_challenge(request, device_id):
                 # verify=False
             )
 
-            if ca_response.status_code == 200:
-                device.certificate = ca_response.text
-                device.save()
-
-                message = "Certificate available at /download-cert/" + str(device.mac)
-
-                return render(request, "select-device.html", {"success": message, 'likely': likely, 'others': others})
-            else:
-                print(ca_response.text)
-                return render(request, "select-device.html", {"error": "Failed to get certificate", 'likely': likely, 'others': others})
         elif device.csr:
-            csr_data = device.csr
-            ca_url = "https://localhost:15000/sign"
             headers = {"Content-Type": "application/pem-csr"}
-            
+            payload = device.csr
+
             ca_response = requests.post(
                 ca_url,
-                data=csr_data,
+                data=payload,
                 headers=headers,
                 cert=(cert_file, key_file),
                 verify=ca_file
+                # verify=False
             )
-            
-            if ca_response.status_code == 200:
-                device.certificate = ca_response.text
-                device.save()
 
-                message = "Certificate available at /download-cert/" + str(device.mac)
+        if ca_response.status_code == 200:
+            device.certificate = ca_response.text
+            device.save()
 
-                return render(request, "select-device.html", {"success": message, 'likely': likely, 'others': others})
-            else:
-                print(ca_response.text)
-                return render(request, "select-device.html", {"error": "Failed to get certificate", 'likely': likely, 'others': others})
-    elif attempt == 5:
-        return render(request, "select-device.html", {"error": "Failed to verify ownership of device", 'likely': likely, 'others': others})
+        else:
+            print(ca_response.text)
 
-    return render(request, 'ownership-challenge.html', {'device': device})
+        return HttpResponse(device.certificate, content_type="application/x-pem-file")
 
-def start_challenge(request):
+    return HttpResponse("Cert not ready", status=404)
+
+def ownership_challenge(request, device_id):
+    device = Device.objects.get(id=int(device_id))
+
+    return render(request, "ownership-challenge.html", {"info": "Disconnect your device now", "device": device})
+
+def start_challenge(request, device_id):
+    device = Device.objects.get(id=int(device_id))
     if request.method == 'POST':
-        request.session["start_time"] = timezone.now().isoformat()
-        timer = random.randint(5,20)
-        request.session["end_time"] = (timezone.now() + timedelta(seconds=timer)).isoformat()
-        print("Start: ", timezone.localtime(parse_datetime(request.session["start_time"])))
-        print("End: ", timezone.localtime(parse_datetime(request.session["end_time"])))
-        print("Timer: ", timer)
-        return JsonResponse({'status': 'ok', 'timer': timer})
+        # initialize challenge sequence
+        interval = random.randint(11, 20)
+        message = "Starting Human Challenges\nReset your device with MAC Address: " + \
+            str(device.mac) + \
+            ", and after " + str(interval) + " seconds of downtime, reconnect within 30 seconds.\n" + \
+            "Count: " + str(device.challengeCount)
 
-def end_challenge(request, device_id):
-    if request.method == 'POST':
-        start_time = parse_datetime(request.session["start_time"])
-        end_time = parse_datetime(request.session["end_time"])
-        device = Device.objects.get(id=device_id)
-        print("Start: ", timezone.localtime(parse_datetime(request.session["start_time"])))
-        print("End: ", timezone.localtime(parse_datetime(request.session["end_time"])))
-        print("Current: ", timezone.localtime(timezone.now()))
-        print("Device: ", timezone.localtime(device.last_active))
+        device, _ = Device.objects.update_or_create(
+            mac=device.mac,
+            defaults={'interval': interval},
+        )
 
         request.session["start_time"] = timezone.now().isoformat()
-        request.session["end_time"] = (parse_datetime(request.session["start_time"]) + timedelta(seconds=10)).isoformat()
-        if device.last_active < start_time:
-            return JsonResponse({'status': 'before'})
-        elif device.last_active >= start_time and device.last_active <= end_time:
-            return JsonResponse({'status': 'between'})
-        elif device.last_active > end_time:
-            return JsonResponse({'status': 'after'})
+        request.session["end_time"] = (timezone.now() + timedelta(seconds=interval)).isoformat()
+
+        return JsonResponse({"status": "ok", "interval": interval, "mac": device.mac, "count": device.challengeCount})
+
+def check_status(request, device_id):
+    device = Device.objects.get(id=int(device_id))
+    if request.method == 'POST':
+        data = json.loads(request.body)
+        print("post received: ", data.get('action'))
+        if data.get('action') == 'end':
+            print("end")
+            if device:
+                start = parse_datetime(request.session["start_time"])
+                end = parse_datetime(request.session["end_time"])
+                last_active = device.updatedAt
+
+                if last_active > end or last_active < start:
+                    request.session["start_time"] = timezone.now().isoformat()
+                    request.session["end_time"] = (timezone.now() + timedelta(seconds=30)).isoformat()
+                    return JsonResponse({"status": "ok", 'interval': 30, "count": device.challengeCount})
+                else:
+                    device.challengeCount = 0
+                    device.save()
+                    return JsonResponse({"status": "fail", "count": device.challengeCount})
+
+        elif data.get('action') == 'check':
+            print("checking")
+            if device:
+                start = parse_datetime(request.session["start_time"])
+                end = parse_datetime(request.session["end_time"])
+                last_active = device.updatedAt
+
+                if start <= last_active <= end:
+                    device.challengeCount += 1
+                    device.save()
+                    return JsonResponse({"status": "ok", "count": device.challengeCount})
+                
+                else:
+                    return JsonResponse({"status": "waiting", "count": device.challengeCount})
         
-        return JsonResponse({'status': 'error', 'message': 'unknown result'})
+        elif data.get('action') == 'fail':
+            print("updating")
+            if device:
+                device.challengeCount = 0
+                device.save()
+                return JsonResponse({"status": "updated", "count": device.challengeCount})

@@ -31,10 +31,6 @@
         {% csrf_token %}
         <input type="submit" name="action" value="Clear All Devices" class="mt-4 px-4 py-2 text-white font-semibold bg-red-500 rounded-xl hover:bg-red-700"/>
       </form>
-      <form action="" method="POST" onsubmit="return confirm('Send a ping to server?');">
-        {% csrf_token %}
-        <input type="submit" name="action" value="Ping Comms Server" class="mt-4 px-4 py-2 text-white font-semibold bg-yellow-500 rounded-xl hover:bg-yellow-700"/>
-      </form>
 
       {% if error %}
         <p style="color: red;">{{ error }}</p>

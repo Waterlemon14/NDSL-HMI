@@ -1,5 +1,7 @@
 function startChallenge() {
-  fetch('/start-challenge/', {
+  const holder = document.getElementById('data-holder');
+  const deviceID = holder.dataset.deviceid;
+  fetch(`/start-challenge/${deviceID}/`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -10,7 +12,8 @@ function startChallenge() {
   .then(data => {
     if (data.status === "ok") {
       console.log("Starting challenge");
-      let timer = parseInt(data.timer);
+      let timer = data.interval;
+      let count = data.count;
       console.log(timer);
 
       const countdown = setInterval(() => {
@@ -20,6 +23,7 @@ function startChallenge() {
           clearInterval(countdown);
         } else {
           document.getElementById('info').innerText = `Keep your device disconnected (${timer}s remaining)`;
+          document.getElementById('counter').innerText = `Challenge Counter: ${count}`;
         }
       }, 1000);
 
@@ -36,7 +40,7 @@ function endChallenge() {
   const holder = document.getElementById('data-holder');
   const deviceID = holder.dataset.deviceid;
   console.log(deviceID)
-  fetch(`/end-challenge/${deviceID}/`, {
+  fetch(`/check-status/${deviceID}/`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -45,12 +49,14 @@ function endChallenge() {
     body: JSON.stringify({ action: 'end' })
   }).then(response => response.json())
   .then(data => {
-    if (data.status === "before") {
-      console.log("Passed");
-      let timer=10;
+    let timer = data.interval;
+    let count = data.count;
+    if (data.status === "ok") {
+      console.log("Passed disconnect");
       const countdown = setInterval(() => {
         timer -= 1;
-        
+        document.getElementById('counter').innerText = `Challenge Counter: ${count}`
+
         if (timer <= 0) {
           clearInterval(countdown);
           document.getElementById('info').innerText = 'Device failed current test';
@@ -58,7 +64,7 @@ function endChallenge() {
           document.getElementById('info').innerText = `Reconnect your device within ${timer} seconds`;
         }
 
-        fetch(`/end-challenge/${deviceID}/`, {
+        fetch(`/check-status/${deviceID}/`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -67,18 +73,21 @@ function endChallenge() {
           body: JSON.stringify({ action: 'check' })
         }).then(response => response.json())
         .then(data => {
-          if (data.status === "between") {
-            console.log("Passed");
+          count = data.count;
+          document.getElementById('counter').innerText = `Challenge Counter: ${count}`
+          if (data.status === "ok") {
+            console.log("Passed reconnect");
             document.getElementById('info').innerText = 'Device passed current test';
             clearInterval(countdown);
           } else {
-            console.error("Failed")
+            console.error("Failed reconnect")
           }
         });
       }, 1000);
     } else {
-      console.error("Failed")
+      console.error("Failed disconnect")
       document.getElementById('info').innerText = 'Device failed current test';
+      document.getElementById('counter').innerText = `Challenge Counter: ${count}`
     }
   });
 }
