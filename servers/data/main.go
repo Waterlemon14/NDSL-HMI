@@ -3,6 +3,7 @@ package main
 // https://venilnoronha.io/a-step-by-step-guide-to-mtls-in-go
 
 import (
+	"bytes"
 	"crypto/tls"
 	"crypto/x509"
 	"database/sql"
@@ -23,6 +24,11 @@ import (
 type Payload struct {
 	Temp float64 `json:"temp"`
 	Time string  `json:"time"`
+}
+
+type Report struct {
+	MAC     string `json:"mac"`
+	Anomaly string `json:"anomaly"`
 }
 
 func loadCertificate(basePath string) (tls.Certificate, error) {
@@ -77,9 +83,6 @@ func main() {
 	}
 	defer db.Close()
 
-	http.HandleFunc("/data", func(w http.ResponseWriter, r *http.Request) {
-		dataHandler(w, r, db)
-	})
 	const BASE_PATH = "."
 
 	cert, err := loadCertificate(BASE_PATH)
@@ -107,6 +110,9 @@ func main() {
 		IdleTimeout: 4 * time.Second,
 	}
 
+	http.HandleFunc("/data", func(w http.ResponseWriter, r *http.Request) {
+		dataHandler(w, r, db)
+	})
 	http.HandleFunc("/ping", handlePing)
 
 	err = server.ListenAndServeTLS("", "")
@@ -121,6 +127,73 @@ func dataHandler(w http.ResponseWriter, r *http.Request, db *sql.DB) {
 		return
 	}
 
+	// Extract the MAC from the Common Name (CN) in the subject
+	clientCert := r.TLS.PeerCertificates[0]
+	MAC := clientCert.Subject.CommonName
+
+	// Anomaly detection
+	var lastCreatedAt time.Time
+	err := db.QueryRow(`
+		SELECT created_at
+		FROM received_data 
+		WHERE mac = ? 
+		ORDER BY created_at DESC 
+		LIMIT 1`,
+		MAC,
+	).Scan(&lastCreatedAt)
+
+	// log.Printf("%s%s%s", "\033[33m", lastCreatedAt, "\033[0m")
+
+	if err == sql.ErrNoRows {
+		log.Printf("Error")
+	}
+
+	now := time.Now()
+	disconnectTime := lastCreatedAt.Add(5 * time.Second)
+
+	if now.After(disconnectTime) {
+		fmt.Printf("%sThe variable time exceeds the calculated limit.%s\n", "\033[33m", "\033[33m")
+
+		// ping server
+		//
+
+		client := &http.Client{}
+
+		payload := Report{
+			MAC:     MAC,
+			Anomaly: "disconnect",
+		}
+
+		jsonData, err := json.Marshal(payload)
+		if err != nil {
+			log.Printf("JSON marshal error: %v", err)
+			for {
+			}
+		}
+
+		reqBody := bytes.NewBuffer(jsonData)
+		request, err := http.NewRequest("POST", "http://localhost:8000/report/", reqBody)
+		if err != nil {
+			panic(err.Error())
+		}
+
+		response, err := client.Do(request)
+		if err != nil {
+			panic(err.Error())
+		}
+		defer response.Body.Close()
+
+		body, err := io.ReadAll(response.Body)
+		if err != nil {
+			panic(err.Error())
+		}
+
+		fmt.Println(string(body))
+
+		return
+	}
+
+	// Parsing data
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
 		http.Error(w, "Failed to read request body", http.StatusInternalServerError)
@@ -136,17 +209,22 @@ func dataHandler(w http.ResponseWriter, r *http.Request, db *sql.DB) {
 	}
 
 	// Insert into SQLite
-	_, err = db.Exec(`INSERT INTO received_data (client_timestamp, temp) VALUES (?, ?)`, p.Time, p.Temp)
+	_, err = db.Exec(`
+		INSERT INTO received_data (mac, client_timestamp, temp) 
+		VALUES (?, ?, ?)`,
+		MAC, p.Time, p.Temp,
+	)
+
 	if err != nil {
 		http.Error(w, "Database insert failed", http.StatusInternalServerError)
 		return
 	}
 
-	log.Printf("Stored data: Time=%s, Temp=%q\n", p.Time, p.Temp)
+	// log.Printf("Stored data: Time=%s, Temp=%q\n", p.Time, p.Temp)
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
-	fmt.Fprintf(w, `{"status":"stored","client_timestamp":%s,"temp":%q}`, p.Time, p.Temp)
+	// fmt.Fprintf(w, `{"status":"stored","client_timestamp":%s,"temp":%q}`, p.Time, p.Temp)
 
 }
 
@@ -159,6 +237,7 @@ func initDB(path string) (*sql.DB, error) {
 	createTable := `
 	CREATE TABLE IF NOT EXISTS received_data (
 		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		mac TEXT,
 		temp TEXT,
 		client_timestamp TIMESTAMP,
 		created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP

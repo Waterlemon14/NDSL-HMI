@@ -235,3 +235,20 @@ def download_cert(request, mac_address):
     if device.certificate:
         return HttpResponse(device.certificate, content_type="application/x-pem-file")
     return HttpResponse("Cert not ready", status=404)
+
+@csrf_exempt
+def report(request):
+    response = HttpResponse()
+    if request.method != "POST":
+        response.status_code = 400
+        return response
+
+    data = json.loads(request.body)
+
+    mac = data.get('MAC')
+    anomaly = data.get('Anomaly')
+
+
+    # TODO: Suspend device here
+    
+    return HttpResponse("Device Suspended", status=200)

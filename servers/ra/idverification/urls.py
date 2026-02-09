@@ -9,4 +9,5 @@ urlpatterns = [
     path('select-device/', views.select_device, name="select_device"),
     path('receive-device-data/', views.receive_device_data, name="receive_device_data"),
     path('download-cert/<str:mac_address>/', views.download_cert),
+    path('report/', views.report),
 ]
