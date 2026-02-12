@@ -5,12 +5,16 @@ x509_extensions = v3_extensions
 prompt = no
 
 [req_distinguished_name]
-C = CA
+C = PH
 ST = .
 L = .
 O = .
 OU = .
+<<<<<<< HEAD
 CN = 192.168.0.212
+=======
+CN = 172.20.10.2
+>>>>>>> main
 
 [v3_extensions]
 basicConstraints = CA:FALSE
@@ -20,4 +24,8 @@ subjectAltName = @alt_names
 
 [alt_names]
 DNS.1 = localhost
+<<<<<<< HEAD
 IP.1 = 192.168.0.212
+=======
+IP.1 = 172.20.10.2
+>>>>>>> main

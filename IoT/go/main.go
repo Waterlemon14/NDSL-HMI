@@ -68,7 +68,7 @@ func main() {
 	tlsConfig := &tls.Config{
 		Certificates: []tls.Certificate{cert},
 		RootCAs:      rootCAPool,
-		MinVersion:   tls.VersionTLS13,
+		MinVersion:   tls.VersionTLS12,
 	}
 
 	client := &http.Client{
@@ -85,17 +85,17 @@ func main() {
 
 	var start time.Time
 
-	interval := time.Now()
+	// interval := time.Now()
 
 	for range ticker.C {
 		// 5 seconds sending, 5 seconds pause loop
-		if time.Since(interval) >= 5*time.Second {
-			fmt.Println("")
-			fmt.Printf("%sPause%s\n", "\033[33m", "\033[0m")
-			fmt.Println("")
-			time.Sleep(5 * time.Second)
-			interval = time.Now()
-		}
+		// if time.Since(interval) >= 5*time.Second {
+		// 	fmt.Println("")
+		// 	fmt.Printf("%sPause%s\n", "\033[33m", "\033[0m")
+		// 	fmt.Println("")
+		// 	time.Sleep(5 * time.Second)
+		// 	interval = time.Now()
+		// }
 
 		temp = rand.Intn(max-min+1) + min
 

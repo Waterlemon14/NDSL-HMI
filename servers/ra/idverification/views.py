@@ -1,3 +1,7 @@
+from datetime import timedelta
+
+import random
+
 from django.shortcuts import render, redirect
 from django.http import JsonResponse, HttpResponse
 from django.views.decorators.csrf import ensure_csrf_cookie, csrf_exempt
@@ -17,6 +21,12 @@ from idverification.helper import get_select_list
 
 # basePathToRepo = "/Users/eisenii/Desktop/Projects/1NDSL-HMI/"
 basePathToRepo = "/home/chris/cs198/NDSL-HMI/"
+
+registeringMACs = []
+
+CHALLENGE_COUNT_THRESHOLD = 3
+
+basePathToRepo = "/Users/eisenii/Desktop/Projects/1NDSL-HMI/"
 
 registeringMACs = []
 
