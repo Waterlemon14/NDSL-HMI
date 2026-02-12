@@ -28,6 +28,8 @@ CHALLENGE_COUNT_THRESHOLD = 3
 
 basePathToRepo = "/Users/eisenii/Desktop/Projects/1NDSL-HMI/"
 
+ca_url = "https://localhost:15000/sign"
+
 registeringMACs = []
 
 CHALLENGE_COUNT_THRESHOLD = 3

@@ -1,3 +1,6 @@
+#define NORMALOP  0
+#define RESET     1
+
 // Network
 #include <WiFi.h>
 #include <HTTPClient.h>
@@ -19,15 +22,15 @@
 // const char* ssid     = "test";
 // const char* password = "passtest";
 
-// const char* ssid = "Dennis";
-// const char* ssid = ">";
-// const char* password = "ddddd123";
+const char* ssid     = "Paella🥘";
+const char* password = "testpasstest";
 
-const char* ssid     = "ndsgwifi";
-const char* password = "H1b2idinF2@";
+// const char* ssid     = "ndsgwifi";
+// const char* password = "H1b2idinF2@";
 
 // Server Info
-const char* server_ip = "10.147.36.131";
+const char* server_ip = "172.20.10.2";
+IPAddress host(172,20,10,2);
 const int idport = 8000;
 const int commsport = 8443;
 
@@ -47,6 +50,10 @@ BearSSL::X509List* clientCertList = nullptr;
 BearSSL::PrivateKey* deviceKey = nullptr;
 
 struct tm timeinfo;
+time_t now;
+
+JsonDocument doc;
+String data;
 
 // File System Helpers
   // byte-array for keys
@@ -200,10 +207,9 @@ void requestCert() {
   // Send Connect to csr server
   int responsecode = 0;
   while (responsecode != 202) {
-    delay(1000);
     Serial.println("Sending device data...");
 
-    if(client.connect(server_ip, idport)) {
+    if(client.connect(host, idport)) {
         http.begin(client, server_ip, idport, "/receive-device-data/", false); // false = HTTP
         http.addHeader("Content-Type", "application/json");
         responsecode = http.POST(jsonPayload);
@@ -214,6 +220,7 @@ void requestCert() {
     } else {
         Serial.println("Connection to ID server failed, retrying...");
     }
+    delay(10000);
   }
 
   // Poll for Certificate (Loop until 200 OK)
@@ -222,7 +229,7 @@ void requestCert() {
     delay(10000);
     Serial.println("Waiting for certificate...");
     
-    if(client.connect(server_ip, idport)) {
+    if(client.connect(host, idport)) {
         String url = "/download-cert/" + WiFi.macAddress() + "/";
         Serial.println(url);
         http.begin(client, server_ip, idport, url, false);
@@ -253,6 +260,7 @@ void clearCerts() {
 
 void setup() {
   Serial.begin(115200);
+  delay(2000);
   while(!Serial);
   
   // 1. Mount File System
@@ -262,14 +270,25 @@ void setup() {
   }
 
   // Remove previously generated keys and cert if needed
-  LittleFS.remove("/private.key");
-  LittleFS.remove("/public.key");
-  LittleFS.remove("/client.crt");
 
+  Serial.print("Normal Operation (0), Reset (1): ");
+
+  while (Serial.available() == 0) {
+  }
+
+  int mode = Serial.parseInt(); 
+
+  if (mode == RESET) {
+    LittleFS.remove("/private.key");
+    LittleFS.remove("/public.key");
+    LittleFS.remove("/client.crt");
+    Serial.println("Board credentials reset");
+    while(1);
+  }
 
   // 2. Generate keys if not found or initial boot
-  generateKeyPair();
-
+  if (!LittleFS.exists("/private.key") || !LittleFS.exists("/public.key")) generateKeyPair();
+  
   // 3. Connect to WiFi
   Serial.printf("Connecting to %s ", ssid);
   WiFi.begin(ssid, password);
@@ -315,8 +334,8 @@ void setup() {
 
   unsigned allowed_usages = BR_KEYTYPE_KEYX | BR_KEYTYPE_SIGN; 
   unsigned cert_issuer_key_type = BR_KEYTYPE_RSA; 
-  // secureclient.setTrustAnchors(trustRoot);
-  secureclient.setInsecure();
+  secureclient.setTrustAnchors(trustRoot);
+  // secureclient.setInsecure();
   secureclient.setClientECCert(clientCertList, deviceKey, allowed_usages, cert_issuer_key_type);
 
   Serial.print("Checking sk alignment: ");
@@ -332,22 +351,26 @@ void setup() {
 void loop() {
   if (WiFi.status() == WL_CONNECTED) {
     Serial.print("Connecting to Data Server... ");
-    if (secureclient.connect(server_ip, commsport)) {
+    if (secureclient.connect(host, commsport)) {
       Serial.println("Connected!");
 
       // Prepare JSON Data
-      JsonDocument doc;
       doc["temp"] = random(1500, 2101) / 100.0;
-      doc["device"] = "PicoW";
+
+      now = time(nullptr);
+      timeinfo = *localtime(&now);
+      char timeStr[20]; 
+      strftime(timeStr, sizeof(timeStr), "%Y-%m-%d %H:%M:%S", &timeinfo);
+
+      doc["time"] = timeStr;
       
-      String payload;
-      serializeJson(doc, payload);
+      serializeJson(doc, data);
 
       // Send HTTP POST
       http.begin(secureclient, String("https://") + server_ip + ":" + commsport + "/data");
       http.addHeader("Content-Type", "application/json");
       
-      int httpCode = http.POST(payload);
+      int httpCode = http.POST(data);
       
       if (httpCode > 0) {
         Serial.printf("Server Response: %d\n", httpCode);

@@ -47,7 +47,6 @@ String ca_cert_str;
 String client_cert_str;
 String client_key_str;
 
-float temp;
 struct tm timeinfo;
 time_t now;
 
@@ -227,7 +226,7 @@ int requestCert() {
 
 void setup() {
   Serial.begin(115200);
-  delay(2000);
+  delay(3000);
   while(!Serial);
 
   // 1. Mount SPIFFS
@@ -240,12 +239,11 @@ void setup() {
   // Remove previously generated keys and cert if needed
 
   Serial.print("Normal Operation (0), Reset (1): ");
-  int mode = Serial.parseInt();
 
   while (Serial.available() == 0) {
   }
 
-  mode = Serial.parseInt(); 
+  int mode = Serial.parseInt(); 
 
   if (mode == RESET) {
     SPIFFS.remove("/client.key");
@@ -254,8 +252,6 @@ void setup() {
     Serial.println("Board credentials reset");
     while(1);
   }
-
-  Serial.println(SPIFFS.exists("/client.key"));
 
   // 2. Generate key and CSR if key does not exist
   if (!SPIFFS.exists("/client.key")) generateKeyAndCSR();
@@ -298,17 +294,15 @@ void loop() {
   if (https.begin(client, serverUrl)) {
     https.addHeader("Content-Type", "application/json");
 
+    // Prepare JSON Data
     doc["temp"] = random(1500, 2101) / 100.0;
 
     now = time(nullptr);
     timeinfo = *localtime(&now);
     char timeStr[20]; 
     strftime(timeStr, sizeof(timeStr), "%Y-%m-%d %H:%M:%S", &timeinfo);
-    double temp = random(1500, 2101) / 100.0;
 
-    doc["temp"] = temp;
     doc["time"] = timeStr;
-
     
     serializeJson(doc, data);
     
