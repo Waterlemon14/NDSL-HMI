@@ -3,6 +3,7 @@ from django.http import JsonResponse, HttpResponse
 from django.views.decorators.csrf import ensure_csrf_cookie, csrf_exempt
 from django.utils import timezone
 from django.utils.dateparse import parse_datetime
+from django.contrib import messages
 from datetime import timedelta
 
 import json
@@ -76,7 +77,10 @@ def select_device(request):
     if request.method == "POST":
         action = request.POST.get("action")
         if action == "Request Certificate":
-            return redirect("/ownership-challenge/" + request.POST.get("device-select"))
+            if Device.objects.get(id=int(request.POST.get("device-select"))).certificate:
+                return render(request, 'select-device.html', {'likely': likely, 'others': others, 'error': "Device certificate already available."})
+            else:
+                return redirect("/ownership-challenge/" + request.POST.get("device-select"))
         elif action == "Clear All Devices":
             Device.objects.all().delete()
             return render(request, 'select-device.html', {'likely': likely, 'others': others})
@@ -247,7 +251,12 @@ def check_status(request, device_id):
                 if start <= last_active <= end:
                     device.challengeCount += 1
                     device.save()
-                    return JsonResponse({"status": "ok", "count": device.challengeCount})
+                    
+                    if device.challengeCount == CHALLENGE_COUNT_THRESHOLD:
+                        messages.success(request, "Ownership challenge complete! Certificate now available for device with MAC address " + device.mac + ".")
+                        return JsonResponse({"status": "complete", "count": device.challengeCount, "redirect": "/select-device",})
+                    else:
+                        return JsonResponse({"status": "ok", "count": device.challengeCount})
                 
                 else:
                     return JsonResponse({"status": "waiting", "count": device.challengeCount})
