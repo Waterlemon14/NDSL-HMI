@@ -4,6 +4,7 @@ from dynaconf import Dynaconf
 def verify_qr(UIN):
     print("Verifying QR")
     config = Dynaconf(settings_files=["/Users/eisenii/Desktop/Projects/1NDSL-HMI/servers/ra/config.toml"], environments=False)
+    # config = Dynaconf(settings_files=["/home/chris/cs198/NDSL-HMI/servers/ra/idverification/mosip/config.toml"], environments=False)
     authenticator = MOSIPAuthenticator(config=config)
     print("MOSIP Setup")
 
@@ -23,6 +24,7 @@ def verify_qr(UIN):
 
 def verify_otp(UIN, OTP, transaction_id):
     config = Dynaconf(settings_files=["/Users/eisenii/Desktop/Projects/1NDSL-HMI/servers/ra/config.toml"], environments=False)
+    # config = Dynaconf(settings_files=["/home/chris/cs198/NDSL-HMI/servers/ra/idverification/mosip/config.toml"], environments=False)
     authenticator = MOSIPAuthenticator(config=config)
 
     # step 2: use otp and transaction id in auth request
