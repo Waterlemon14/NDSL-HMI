@@ -297,4 +297,3 @@ def check_status(request, device_id):
                 device.challengeCount = 0
                 device.save()
                 return JsonResponse({"status": "updated", "count": device.challengeCount})
->>>>>>> origin/main
