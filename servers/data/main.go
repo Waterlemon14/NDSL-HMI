@@ -31,6 +31,24 @@ type Report struct {
 	Anomaly string `json:"anomaly"`
 }
 
+// Device state constants (must match Django idverification.models.State)
+const (
+	StateConnected    = "connected"
+	StateReconnecting = "reconnecting"
+	StateSuspended    = "suspended"
+)
+
+type DeviceState string
+
+func (s DeviceState) IsValid() bool {
+	switch s {
+	case StateConnected, StateReconnecting, StateSuspended:
+		return true
+	default:
+		return false
+	}
+}
+
 func loadCertificate(basePath string) (tls.Certificate, error) {
 	certFile := path.Join(basePath, "server.crt")
 	keyFile := path.Join(basePath, "server.key")
@@ -77,11 +95,19 @@ func handlePing(w http.ResponseWriter, r *http.Request) {
 }
 
 func main() {
-	db, err := initDB("data.db")
+	dataDB, err := initDB("data.db")
 	if err != nil {
 		log.Fatalf("DB init error: %v", err)
+		return
 	}
-	defer db.Close()
+	defer dataDB.Close()
+
+	raDB, err := sql.Open("sqlite", "../ra/db.sqlite3")
+	if err != nil {
+		log.Fatalf("RA DB open error: %v", err)
+		return
+	}
+	defer raDB.Close()
 
 	const BASE_PATH = "."
 
@@ -111,7 +137,7 @@ func main() {
 	}
 
 	http.HandleFunc("/data", func(w http.ResponseWriter, r *http.Request) {
-		dataHandler(w, r, db)
+		dataHandler(w, r, dataDB, raDB)
 	})
 	http.HandleFunc("/ping", handlePing)
 
@@ -121,7 +147,7 @@ func main() {
 	}
 }
 
-func dataHandler(w http.ResponseWriter, r *http.Request, db *sql.DB) {
+func dataHandler(w http.ResponseWriter, r *http.Request, dataDB *sql.DB, raDB *sql.DB) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "Only POST allowed", http.StatusMethodNotAllowed)
 		return
@@ -133,19 +159,38 @@ func dataHandler(w http.ResponseWriter, r *http.Request, db *sql.DB) {
 		return
 	}
 	clientCert := r.TLS.PeerCertificates[0]
-	MAC := clientCert.Subject.CommonName
+	mac := clientCert.Subject.CommonName
 
-	anomaly, err := isAnomaly(w, db, MAC)
+	deviceState, err := checkDeviceState(raDB, mac)
 	if err != nil {
-		http.Error(w, "Database error", http.StatusInternalServerError)
+		log.Printf("Checking device state error %s: %v", mac, err)
+		http.Error(w, "Device Suspended: Reconnect", http.StatusConflict)
 		return
 	}
-	if anomaly {
-		err = suspendDevice(w, MAC)
-		if err != nil {
+
+	if deviceState == StateSuspended {
+		http.Error(w, "Device Suspended: Reconnect", http.StatusConflict)
+		return
+	}
+	if deviceState == StateReconnecting {
+		if err := reconnectDevice(w, mac); err != nil {
+			log.Printf("Error reconnecting check for MAC %s: %v", mac, err)
+			http.Error(w, "Reconnecting error", http.StatusInternalServerError)
 			return
 		}
 	}
+
+	if anomaly, err := isAnomaly(w, dataDB, mac); err != nil {
+		http.Error(w, "Database error", http.StatusInternalServerError)
+		return
+	} else if anomaly {
+		if err := suspendDevice(w, mac); err != nil {
+			http.Error(w, "Failed to suspend device", http.StatusInternalServerError)
+			return
+		}
+	}
+
+	// Assume connected already
 
 	// Parsing data
 	body, err := io.ReadAll(r.Body)
@@ -155,7 +200,6 @@ func dataHandler(w http.ResponseWriter, r *http.Request, db *sql.DB) {
 	}
 	defer r.Body.Close()
 
-	// Log and echo back the data
 	var p Payload
 	if err := json.Unmarshal(body, &p); err != nil {
 		http.Error(w, "Invalid JSON", http.StatusBadRequest)
@@ -163,10 +207,10 @@ func dataHandler(w http.ResponseWriter, r *http.Request, db *sql.DB) {
 	}
 
 	// Insert into SQLite
-	_, err = db.Exec(`
+	_, err = dataDB.Exec(`
 		INSERT INTO received_data (mac, client_timestamp, temp) 
 		VALUES (?, ?, ?)`,
-		MAC, p.Time, p.Temp,
+		mac, p.Time, p.Temp,
 	)
 
 	if err != nil {
@@ -180,7 +224,7 @@ func dataHandler(w http.ResponseWriter, r *http.Request, db *sql.DB) {
 }
 
 func initDB(path string) (*sql.DB, error) {
-	db, err := sql.Open("sqlite", path)
+	dataDB, err := sql.Open("sqlite", path)
 	if err != nil {
 		return nil, err
 	}
@@ -194,21 +238,65 @@ func initDB(path string) (*sql.DB, error) {
 		created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 	);
 	`
-	_, err = db.Exec(createTable)
+	_, err = dataDB.Exec(createTable)
 	if err != nil {
 		return nil, err
 	}
 
-	return db, nil
+	return dataDB, nil
+}
+
+func checkDeviceState(raDB *sql.DB, mac string) (DeviceState, error) {
+	var state string
+	err := raDB.QueryRow(`
+		SELECT state
+		FROM idverification_device
+		WHERE mac = ?
+		LIMIT 1`,
+		mac,
+	).Scan(&state)
+
+	if err != nil {
+		log.Printf("RA DB query error: %v", err)
+		return DeviceState(""), err
+	}
+	return DeviceState(state), nil
+}
+
+func reconnectDevice(w http.ResponseWriter, mac string) error {
+	client := &http.Client{Timeout: 10 * time.Second}
+	reconnectURL := fmt.Sprintf("http://localhost:8000/reconnect/%s/", mac)
+
+	req, err := http.NewRequest("GET", reconnectURL, nil)
+	if err != nil {
+		http.Error(w, "Internal error", http.StatusInternalServerError)
+		return err
+	}
+	resp, err := client.Do(req)
+	if err != nil {
+		log.Printf("Reconnect request failed: %v", err)
+		http.Error(w, "Reconnect upstream unreachable", http.StatusBadGateway)
+		return err
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		log.Printf("Failed to read reconnect response body: %v", err)
+		return err
+	}
+	fmt.Println(string(body))
+
+	http.Error(w, "Anomaly detected; device reported", http.StatusConflict)
+	return nil
 }
 
 func suspendDevice(w http.ResponseWriter, mac string) error {
 	fmt.Printf("%sThe variable time exceeds the calculated limit.%s\n", "\033[33m", "\033[0m")
-
 	client := &http.Client{Timeout: 10 * time.Second}
 	payload := Report{
 		MAC:     mac,
-		Anomaly: "disconnect",
+		Anomaly: "disconnected",
 	}
 	jsonData, err := json.Marshal(payload)
 	if err != nil {
@@ -241,9 +329,9 @@ func suspendDevice(w http.ResponseWriter, mac string) error {
 	return nil
 }
 
-func isAnomaly(w http.ResponseWriter, db *sql.DB, mac string) (bool, error) {
+func isAnomaly(w http.ResponseWriter, dataDB *sql.DB, mac string) (bool, error) {
 	var lastCreatedAt time.Time
-	err := db.QueryRow(`
+	err := dataDB.QueryRow(`
 		SELECT created_at
 		FROM received_data 
 		WHERE mac = ? 
@@ -256,7 +344,8 @@ func isAnomaly(w http.ResponseWriter, db *sql.DB, mac string) (bool, error) {
 		// First time seeing this MAC: no previous activity, so no anomaly
 		return false, nil
 	} else if err != nil {
-		http.Error(w, "Database error", http.StatusInternalServerError)
+		log.Printf("Error: %v", err)
+		http.Error(w, "Server Database error", http.StatusInternalServerError)
 		return false, err
 	}
 
