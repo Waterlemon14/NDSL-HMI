@@ -128,10 +128,14 @@ func dataHandler(w http.ResponseWriter, r *http.Request, db *sql.DB) {
 	}
 
 	// Extract the MAC from the Common Name (CN) in the subject
+	if r.TLS == nil || len(r.TLS.PeerCertificates) == 0 {
+		http.Error(w, "Client certificate required", http.StatusBadRequest)
+		return
+	}
 	clientCert := r.TLS.PeerCertificates[0]
 	MAC := clientCert.Subject.CommonName
 
-	// Anomaly detection
+	// Anomaly detection: only treat as disconnect if we have seen this MAC before
 	var lastCreatedAt time.Time
 	err := db.QueryRow(`
 		SELECT created_at
@@ -142,54 +146,53 @@ func dataHandler(w http.ResponseWriter, r *http.Request, db *sql.DB) {
 		MAC,
 	).Scan(&lastCreatedAt)
 
-	// log.Printf("%s%s%s", "\033[33m", lastCreatedAt, "\033[0m")
-
 	if err == sql.ErrNoRows {
-		log.Printf("Error")
+		// First time seeing this MAC: no previous activity, so no anomaly
+		lastCreatedAt = time.Time{}
+	} else if err != nil {
+		http.Error(w, "Database error", http.StatusInternalServerError)
+		return
 	}
 
 	now := time.Now()
 	disconnectTime := lastCreatedAt.Add(5 * time.Second)
 
-	if now.After(disconnectTime) {
-		fmt.Printf("%sThe variable time exceeds the calculated limit.%s\n", "\033[33m", "\033[33m")
+	if !lastCreatedAt.IsZero() && now.After(disconnectTime) {
+		fmt.Printf("%sThe variable time exceeds the calculated limit.%s\n", "\033[33m", "\033[0m")
 
-		// ping server
-		//
-
-		client := &http.Client{}
-
+		client := &http.Client{Timeout: 10 * time.Second}
 		payload := Report{
 			MAC:     MAC,
 			Anomaly: "disconnect",
 		}
-
 		jsonData, err := json.Marshal(payload)
 		if err != nil {
 			log.Printf("JSON marshal error: %v", err)
-			for {
-			}
+			http.Error(w, "Internal error", http.StatusInternalServerError)
+			return
 		}
-
 		reqBody := bytes.NewBuffer(jsonData)
-		request, err := http.NewRequest("POST", "http://localhost:8000/report/", reqBody)
+		req, err := http.NewRequest("POST", "http://localhost:8000/report/", reqBody)
 		if err != nil {
-			panic(err.Error())
+			http.Error(w, "Internal error", http.StatusInternalServerError)
+			return
+		}
+		req.Header.Set("Content-Type", "application/json")
+		resp, err := client.Do(req)
+		if err != nil {
+			log.Printf("Report request failed: %v", err)
+			http.Error(w, "Anomaly reported but upstream unreachable", http.StatusBadGateway)
+			return
+		}
+		defer resp.Body.Close()
+		body, err := io.ReadAll(resp.Body)
+		if err != nil {
+			log.Printf("Failed to read report response body: %v", err)
+		} else {
+			fmt.Println(string(body))
 		}
 
-		response, err := client.Do(request)
-		if err != nil {
-			panic(err.Error())
-		}
-		defer response.Body.Close()
-
-		body, err := io.ReadAll(response.Body)
-		if err != nil {
-			panic(err.Error())
-		}
-
-		fmt.Println(string(body))
-
+		http.Error(w, "Anomaly detected; device reported", http.StatusConflict)
 		return
 	}
 
