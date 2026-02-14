@@ -86,8 +86,10 @@ func main() {
 
 		var bodyjson CSRData
 
+		log.Printf("Parsing for csr")
 		csr, err := parseCSR(body)
 		if err != nil {
+			log.Printf("Parsing for json")
 			err := json.Unmarshal(body, &bodyjson)
 
 			fmt.Printf("%s\n", body)
