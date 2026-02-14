@@ -8,6 +8,7 @@ from django.views.decorators.csrf import ensure_csrf_cookie, csrf_exempt
 from django.utils import timezone
 from django.utils.dateparse import parse_datetime
 from django.contrib import messages
+from django.contrib.auth import login
 from datetime import timedelta
 
 import json
@@ -16,7 +17,7 @@ import ipaddress
 import random
 
 from idverification.mosip import otp_auth
-from idverification.models import Device
+from idverification.models import Device, User
 from idverification.helper import get_select_list
 
 # basePathToRepo = "/Users/eisenii/Desktop/Projects/1NDSL-HMI/"
@@ -40,6 +41,8 @@ def index(request):
 def verify_qr(request):
     data = json.loads(request.body)
     uin = data.get('UIN')
+    lastName = data.get('lName')
+    firstName = data.get('fName')
 
     response_body = otp_auth.verify_qr(uin)
     errors = response_body.get('errors')
@@ -48,6 +51,8 @@ def verify_qr(request):
         transaction_id = response_body["transactionID"]
         request.session["uin"] = uin
         request.session["transaction_id"] = transaction_id
+        request.session["lastName"] = lastName
+        request.session["firstName"] = firstName
 
         return JsonResponse({
             "status": "ok",
@@ -70,8 +75,22 @@ def enter_otp(request):
 
         print(response_body)
 
-        if (errors == None):
+        if (errors == None and request.session.get("firstName") and request.session.get("lastName")):
             request.session["is_verified"] = True
+            user, created = User.objects.get_or_create(
+                uin=uin,
+                defaults={
+                    'firstName': request.session["firstName"],
+                    'lastName': request.session["lastName"],
+                }
+            )
+
+            if created:
+                user.set_unusable_password()
+                user.save()
+            
+            login(request, user, backend='django.contrib.auth.backends.ModelBackend')
+            
             return redirect("select_device")
         
         return render(request, "enter-otp.html", {"error": "Invalid OTP"})

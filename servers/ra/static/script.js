@@ -6,7 +6,7 @@ function onScanSuccess(decodedText, decodedResult) {
 
   // extract UIN
   const data = JSON.parse(decodedText)
-  let uin = data["subject"]["UIN"];
+  let jsonSend = data["subject"];
   
   fetch('/verify-qr/', {
     method: 'POST',
@@ -14,7 +14,7 @@ function onScanSuccess(decodedText, decodedResult) {
       'Content-Type': 'application/json',
       'X-CSRFToken': csrftoken,
     },
-    body: JSON.stringify({ UIN: uin }),
+    body: JSON.stringify(jsonSend),
   }).then(response => response.json())
   .then(data => {
     if (data.status === "ok") {
