@@ -135,65 +135,16 @@ func dataHandler(w http.ResponseWriter, r *http.Request, db *sql.DB) {
 	clientCert := r.TLS.PeerCertificates[0]
 	MAC := clientCert.Subject.CommonName
 
-	// Anomaly detection: only treat as disconnect if we have seen this MAC before
-	var lastCreatedAt time.Time
-	err := db.QueryRow(`
-		SELECT created_at
-		FROM received_data 
-		WHERE mac = ? 
-		ORDER BY created_at DESC 
-		LIMIT 1`,
-		MAC,
-	).Scan(&lastCreatedAt)
-
-	if err == sql.ErrNoRows {
-		// First time seeing this MAC: no previous activity, so no anomaly
-		lastCreatedAt = time.Time{}
-	} else if err != nil {
+	anomaly, err := isAnomaly(w, db, MAC)
+	if err != nil {
 		http.Error(w, "Database error", http.StatusInternalServerError)
 		return
 	}
-
-	now := time.Now()
-	disconnectTime := lastCreatedAt.Add(5 * time.Second)
-
-	if !lastCreatedAt.IsZero() && now.After(disconnectTime) {
-		fmt.Printf("%sThe variable time exceeds the calculated limit.%s\n", "\033[33m", "\033[0m")
-
-		client := &http.Client{Timeout: 10 * time.Second}
-		payload := Report{
-			MAC:     MAC,
-			Anomaly: "disconnect",
-		}
-		jsonData, err := json.Marshal(payload)
+	if anomaly {
+		err = suspendDevice(w, MAC)
 		if err != nil {
-			log.Printf("JSON marshal error: %v", err)
-			http.Error(w, "Internal error", http.StatusInternalServerError)
 			return
 		}
-		reqBody := bytes.NewBuffer(jsonData)
-		req, err := http.NewRequest("POST", "http://localhost:8000/report/", reqBody)
-		if err != nil {
-			http.Error(w, "Internal error", http.StatusInternalServerError)
-			return
-		}
-		req.Header.Set("Content-Type", "application/json")
-		resp, err := client.Do(req)
-		if err != nil {
-			log.Printf("Report request failed: %v", err)
-			http.Error(w, "Anomaly reported but upstream unreachable", http.StatusBadGateway)
-			return
-		}
-		defer resp.Body.Close()
-		body, err := io.ReadAll(resp.Body)
-		if err != nil {
-			log.Printf("Failed to read report response body: %v", err)
-		} else {
-			fmt.Println(string(body))
-		}
-
-		http.Error(w, "Anomaly detected; device reported", http.StatusConflict)
-		return
 	}
 
 	// Parsing data
@@ -223,11 +174,8 @@ func dataHandler(w http.ResponseWriter, r *http.Request, db *sql.DB) {
 		return
 	}
 
-	// log.Printf("Stored data: Time=%s, Temp=%q\n", p.Time, p.Temp)
-
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
-	// fmt.Fprintf(w, `{"status":"stored","client_timestamp":%s,"temp":%q}`, p.Time, p.Temp)
 
 }
 
@@ -252,4 +200,67 @@ func initDB(path string) (*sql.DB, error) {
 	}
 
 	return db, nil
+}
+
+func suspendDevice(w http.ResponseWriter, mac string) error {
+	fmt.Printf("%sThe variable time exceeds the calculated limit.%s\n", "\033[33m", "\033[0m")
+
+	client := &http.Client{Timeout: 10 * time.Second}
+	payload := Report{
+		MAC:     mac,
+		Anomaly: "disconnect",
+	}
+	jsonData, err := json.Marshal(payload)
+	if err != nil {
+		log.Printf("JSON marshal error: %v", err)
+		http.Error(w, "Internal error", http.StatusInternalServerError)
+		return err
+	}
+	reqBody := bytes.NewBuffer(jsonData)
+	req, err := http.NewRequest("POST", "http://localhost:8000/report/", reqBody)
+	if err != nil {
+		http.Error(w, "Internal error", http.StatusInternalServerError)
+		return err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := client.Do(req)
+	if err != nil {
+		log.Printf("Report request failed: %v", err)
+		http.Error(w, "Anomaly reported but upstream unreachable", http.StatusBadGateway)
+		return err
+	}
+	defer resp.Body.Close()
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		log.Printf("Failed to read report response body: %v", err)
+	} else {
+		fmt.Println(string(body))
+	}
+
+	http.Error(w, "Anomaly detected; device reported", http.StatusConflict)
+	return nil
+}
+
+func isAnomaly(w http.ResponseWriter, db *sql.DB, mac string) (bool, error) {
+	var lastCreatedAt time.Time
+	err := db.QueryRow(`
+		SELECT created_at
+		FROM received_data 
+		WHERE mac = ? 
+		ORDER BY created_at DESC 
+		LIMIT 1`,
+		mac,
+	).Scan(&lastCreatedAt)
+
+	if err == sql.ErrNoRows {
+		// First time seeing this MAC: no previous activity, so no anomaly
+		return false, nil
+	} else if err != nil {
+		http.Error(w, "Database error", http.StatusInternalServerError)
+		return false, err
+	}
+
+	now := time.Now()
+	disconnectTime := lastCreatedAt.Add(10 * time.Second)
+	return now.After(disconnectTime), nil
 }
