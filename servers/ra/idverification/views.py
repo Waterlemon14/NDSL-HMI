@@ -127,6 +127,7 @@ def receive_device_data(request):
         pk = data.get('PublicKey')
         csr = data.get('CSR')
         challengeCount = 0
+        owner = None
         print(ip,mac)
         
         device = Device.objects.filter(mac=mac).first()
@@ -134,6 +135,7 @@ def receive_device_data(request):
         if device:
             challengeCount = device.challengeCount        
             manufacturer = device.manufacturer
+            owner = device.owner
         
         else:
             mac_response = requests.get("https://api.macvendors.com/"+mac)
@@ -150,6 +152,7 @@ def receive_device_data(request):
                 'public_key': pk, 
                 'csr':csr, 
                 'challengeCount': challengeCount,
+                'owner': owner
                 },
         )
 
@@ -283,6 +286,8 @@ def check_status(request, device_id):
                     
                     if device.challengeCount == CHALLENGE_COUNT_THRESHOLD:
                         messages.success(request, "Ownership challenge complete! Certificate now available for device with MAC address " + device.mac + ".")
+                        device.owner = request.user
+                        device.save()
                         return JsonResponse({"status": "complete", "count": device.challengeCount, "redirect": "/select-device",})
                     else:
                         return JsonResponse({"status": "ok", "count": device.challengeCount})

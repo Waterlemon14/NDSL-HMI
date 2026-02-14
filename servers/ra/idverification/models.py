@@ -1,5 +1,6 @@
 from django.db import models
 from django.contrib.auth.models import AbstractBaseUser, BaseUserManager
+from django.conf import settings
 
 # Create your models here.
 
@@ -17,6 +18,14 @@ class Device(models.Model):
     interval = models.SmallIntegerField(default=1000000)
 
     certificate = models.TextField(blank=True, null=True)
+
+    owner = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, 
+        blank=True,
+        related_name="devices"
+    )
 
 class UserManager(BaseUserManager):
     def create_user(self, uin, firstName, lastName):

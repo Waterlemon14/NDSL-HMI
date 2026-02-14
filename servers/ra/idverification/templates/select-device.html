@@ -9,12 +9,12 @@
       <select name="device-select" id="device-select">
         <optgroup label="Likely your device">
           {% for device in likely %}
-          <option value="{{ device.id }}">IP: {{device.ip}}, MAC: {{device.mac}}, Manufacturer:: {{device.manufacturer}}</option>
+          <option value="{{ device.id }}">IP: {{device.ip}}, MAC: {{device.mac}}, Manufacturer: {{device.manufacturer}}</option>
           {% endfor %}
         </optgroup>
         <optgroup label="Other devices">
           {% for device in others %}
-          <option value="{{ device.id }}">IP: {{device.ip}}, MAC: {{device.mac}}, Manufacturer:: {{device.manufacturer}}</option>
+          <option value="{{ device.id }}">IP: {{device.ip}}, MAC: {{device.mac}}, Manufacturer: {{device.manufacturer}}</option>
           {% endfor %}
         </optgroup>
       </select>
