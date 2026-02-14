@@ -12,19 +12,18 @@ from datetime import timedelta
 
 import json
 import requests
-import ipaddress
-import random
+from pathlib import Path
+
 
 from idverification.mosip import otp_auth
-from idverification.models import Device
+from idverification.models import Device, State
 from idverification.helper import get_select_list
-
-# basePathToRepo = "/Users/eisenii/Desktop/Projects/1NDSL-HMI/"
-basePathToRepo = "/home/chris/cs198/NDSL-HMI/"
 
 registeringMACs = []
 
 CHALLENGE_COUNT_THRESHOLD = 3
+
+basePathToRepo = Path(__file__).parent.parent.parent.parent
 
 ca_url = "https://localhost:15000/sign"
 
@@ -154,9 +153,9 @@ def download_cert(request, mac_address):
     elif device.challengeCount == CHALLENGE_COUNT_THRESHOLD:
         ca_url = "https://localhost:15000/sign"
 
-        cert_file = basePathToRepo+"servers/ra/id_server.crt"
-        key_file = basePathToRepo+"servers/ra/id_server.key"
-        ca_file = basePathToRepo+"servers/ra/root-ca.crt"
+        cert_file = basePathToRepo / "servers" / "ra" / "id_server.crt"
+        key_file = basePathToRepo / "servers" / "ra" / "id_server.key"
+        ca_file = basePathToRepo / "servers" / "ra" / "root-ca.crt"
 
         if device.public_key:
             headers = {"Content-Type": "application/json"}
@@ -204,6 +203,31 @@ def download_cert(request, mac_address):
         return HttpResponse(device.certificate, content_type="application/x-pem-file")
 
     return HttpResponse("Cert not ready", status=404)
+
+@csrf_exempt
+def report_device(request):
+    if request.method != "POST":
+        return HttpResponse("Method not allowed", status=400)
+    try:
+        data = json.loads(request.body)
+    except json.JSONDecodeError:
+        return HttpResponse("Invalid JSON", status=400)
+
+    print(data)
+    mac = data.get("mac")
+    anomaly = data.get("anomaly")
+
+    if anomaly == "disconnected":
+        try:
+            _, _ = Device.objects.update_or_create(
+            mac=mac,
+            defaults={'state': State.SUSPENDED},
+        )
+        except Device.DoesNotExist:
+            pass  # MAC not registered in RA
+
+    return HttpResponse("Device Suspended", status=200)
+
 
 def ownership_challenge(request, device_id):
     device = Device.objects.get(id=int(device_id))
@@ -277,3 +301,35 @@ def check_status(request, device_id):
                 device.challengeCount = 0
                 device.save()
                 return JsonResponse({"status": "updated", "count": device.challengeCount})
+
+def reconnect_device(request, mac_address):
+    print(mac_address)
+    try:
+        _, _ = Device.objects.update_or_create(
+            mac=mac_address,
+            defaults={'state': State.CONNECTED})
+    except Device.DoesNotExist:
+        pass  # MAC not registered in RA
+    
+    return HttpResponse("Device Reconnected", status=200)
+
+def temp_list_devices(request):
+    devices = Device.objects.all().order_by("-updatedAt")
+    if request.method == "POST":
+        device_id = request.POST.get("device_id")
+        new_state = request.POST.get("state")
+        if device_id and new_state and new_state in (State.CONNECTED, State.RECONNECTING, State.SUSPENDED):
+            try:
+                device, _ = Device.objects.update_or_create(
+                    id=int(device_id),
+                    defaults={'state': new_state},
+                )
+                messages.success(request, f"Device {device.mac} set to {new_state}.")
+            except (ValueError, Device.DoesNotExist):
+                messages.error(request, "Invalid device or state.")
+        return redirect("temp_list_devices")
+    return render(
+        request,
+        "temp-list-devices.html",
+        {"devices": devices, "state_choices": State.CHOICES},
+    )

@@ -344,6 +344,7 @@ void loop() {
         double temp = random(1500, 2101) / 100.0;
         doc["temp"] = temp;
         doc["time"] = buffer;
+        doc["MAC"] = WiFi.macAddress();
         
         String data;
         serializeJson(doc, data);

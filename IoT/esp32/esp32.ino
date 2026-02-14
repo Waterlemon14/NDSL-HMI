@@ -303,6 +303,7 @@ void loop() {
     strftime(timeStr, sizeof(timeStr), "%Y-%m-%d %H:%M:%S", &timeinfo);
 
     doc["time"] = timeStr;
+    doc["MAC"] = WiFi.macAddress();
     
     serializeJson(doc, data);
     
