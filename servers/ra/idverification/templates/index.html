@@ -1,5 +1,9 @@
 {% extends "base.html" %}
 
+{% block script %}
+  <script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
+{% endblock script %}
+
 {% block content %}
   <h1 class="text-xl font-semibold">Scan ID</h1>
   <div id="results" style="visibility: hidden;">Results: </div>

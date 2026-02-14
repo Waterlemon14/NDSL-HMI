@@ -277,3 +277,22 @@ def check_status(request, device_id):
                 device.challengeCount = 0
                 device.save()
                 return JsonResponse({"status": "updated", "count": device.challengeCount})
+
+def view_device(request):
+    if not request.session.get("is_verified"):
+        return redirect("/")
+    
+    likely, others = get_select_list(request)
+
+    if request.method == "POST":
+        action = request.POST.get("action")
+        if action == "Request Certificate":
+            if Device.objects.get(id=int(request.POST.get("device-select"))).certificate:
+                return render(request, 'view-device.html', {'likely': likely, 'others': others, 'error': "Device certificate already available."})
+            else:
+                return redirect("/ownership-challenge/" + request.POST.get("device-select"))
+        elif action == "Clear All Devices":
+            Device.objects.all().delete()
+            return render(request, 'view-device.html', {'likely': likely, 'others': others})
+    
+    return render(request, 'view-device.html', {'likely': likely, 'others': others})
