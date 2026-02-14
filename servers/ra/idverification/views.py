@@ -12,21 +12,18 @@ from datetime import timedelta
 
 import json
 import requests
-import ipaddress
-import random
+from pathlib import Path
+
 
 from idverification.mosip import otp_auth
 from idverification.models import Device
 from idverification.helper import get_select_list
 
-# basePathToRepo = "/Users/eisenii/Desktop/Projects/1NDSL-HMI/"
-basePathToRepo = "/home/chris/cs198/NDSL-HMI/"
-
 registeringMACs = []
 
 CHALLENGE_COUNT_THRESHOLD = 3
 
-basePathToRepo = "/Users/eisenii/Desktop/Projects/1NDSL-HMI/"
+basePathToRepo = Path(__file__).parent.parent.parent.parent
 
 ca_url = "https://localhost:15000/sign"
 
