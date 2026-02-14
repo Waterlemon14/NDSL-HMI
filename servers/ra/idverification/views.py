@@ -16,7 +16,7 @@ from pathlib import Path
 
 
 from idverification.mosip import otp_auth
-from idverification.models import Device
+from idverification.models import Device, State
 from idverification.helper import get_select_list
 
 registeringMACs = []
@@ -153,9 +153,9 @@ def download_cert(request, mac_address):
     elif device.challengeCount == CHALLENGE_COUNT_THRESHOLD:
         ca_url = "https://localhost:15000/sign"
 
-        cert_file = basePathToRepo+"servers/ra/id_server.crt"
-        key_file = basePathToRepo+"servers/ra/id_server.key"
-        ca_file = basePathToRepo+"servers/ra/root-ca.crt"
+        cert_file = basePathToRepo / "servers" / "ra" / "id_server.crt"
+        key_file = basePathToRepo / "servers" / "ra" / "id_server.key"
+        ca_file = basePathToRepo / "servers" / "ra" / "root-ca.crt"
 
         if device.public_key:
             headers = {"Content-Type": "application/json"}
