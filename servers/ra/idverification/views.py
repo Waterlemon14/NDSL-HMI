@@ -329,34 +329,9 @@ def check_status(request, device_id):
 def view_device(request):
     if not request.session.get("is_verified"):
         return redirect("/")
-    
-    likely, others = get_select_list(request)
 
-    if request.method == "POST":
-        action = request.POST.get("action")
-        if action == "Request Certificate":
-            if Device.objects.get(id=int(request.POST.get("device-select"))).certificate:
-                return render(request, 'view-device.html', {'likely': likely, 'others': others, 'error': "Device certificate already available."})
-            else:
-                return redirect("/ownership-challenge/" + request.POST.get("device-select"))
-        elif action == "Clear All Devices":
-            Device.objects.all().delete()
-            return render(request, 'view-device.html', {'likely': likely, 'others': others})
-    
-    return render(request, 'view-device.html')
-def reconnect_device(request, mac_address):
-    print(mac_address)
-    try:
-        _, _ = Device.objects.update_or_create(
-            mac=mac_address,
-            defaults={'state': State.CONNECTED})
-    except Device.DoesNotExist:
-        pass  # MAC not registered in RA
-    
-    return HttpResponse("Device Reconnected", status=200)
+    devices = request.user.devices.all().order_by("-updatedAt")
 
-def temp_list_devices(request):
-    devices = Device.objects.all().order_by("-updatedAt")
     if request.method == "POST":
         device_id = request.POST.get("device_id")
         new_state = request.POST.get("state")
@@ -369,9 +344,17 @@ def temp_list_devices(request):
                 messages.success(request, f"Device {device.mac} set to {new_state}.")
             except (ValueError, Device.DoesNotExist):
                 messages.error(request, "Invalid device or state.")
-        return redirect("temp_list_devices")
-    return render(
-        request,
-        "temp-list-devices.html",
-        {"devices": devices, "state_choices": State.CHOICES},
-    )
+        return redirect("view_device")
+    
+    return render(request, 'view-device.html', {'devices': devices, "state_choices": State.CHOICES})
+
+def reconnect_device(request, mac_address):
+    print(mac_address)
+    try:
+        _, _ = Device.objects.update_or_create(
+            mac=mac_address,
+            defaults={'state': State.CONNECTED})
+    except Device.DoesNotExist:
+        pass  # MAC not registered in RA
+    
+    return HttpResponse("Device Reconnected", status=200)
