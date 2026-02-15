@@ -8,6 +8,7 @@ from django.views.decorators.csrf import ensure_csrf_cookie, csrf_exempt
 from django.utils import timezone
 from django.utils.dateparse import parse_datetime
 from django.contrib import messages
+from django.contrib.auth import login
 from datetime import timedelta
 
 import json
@@ -16,7 +17,7 @@ from pathlib import Path
 
 
 from idverification.mosip import otp_auth
-from idverification.models import Device, State
+from idverification.models import Device, User, State
 from idverification.helper import get_select_list
 
 registeringMACs = []
@@ -39,6 +40,8 @@ def index(request):
 def verify_qr(request):
     data = json.loads(request.body)
     uin = data.get('UIN')
+    lastName = data.get('lName')
+    firstName = data.get('fName')
 
     response_body = otp_auth.verify_qr(uin)
     errors = response_body.get('errors')
@@ -47,6 +50,8 @@ def verify_qr(request):
         transaction_id = response_body["transactionID"]
         request.session["uin"] = uin
         request.session["transaction_id"] = transaction_id
+        request.session["lastName"] = lastName
+        request.session["firstName"] = firstName
 
         return JsonResponse({
             "status": "ok",
@@ -69,8 +74,22 @@ def enter_otp(request):
 
         print(response_body)
 
-        if (errors == None):
+        if (errors == None and request.session.get("firstName") and request.session.get("lastName")):
             request.session["is_verified"] = True
+            user, created = User.objects.get_or_create(
+                uin=uin,
+                defaults={
+                    'firstName': request.session["firstName"],
+                    'lastName': request.session["lastName"],
+                }
+            )
+
+            if created:
+                user.set_unusable_password()
+                user.save()
+            
+            login(request, user, backend='django.contrib.auth.backends.ModelBackend')
+            
             return redirect("select_device")
         
         return render(request, "enter-otp.html", {"error": "Invalid OTP"})
@@ -107,6 +126,7 @@ def receive_device_data(request):
         pk = data.get('PublicKey')
         csr = data.get('CSR')
         challengeCount = 0
+        owner = None
         print(ip,mac)
         
         device = Device.objects.filter(mac=mac).first()
@@ -114,6 +134,7 @@ def receive_device_data(request):
         if device:
             challengeCount = device.challengeCount        
             manufacturer = device.manufacturer
+            owner = device.owner
         
         else:
             mac_response = requests.get("https://api.macvendors.com/"+mac)
@@ -130,6 +151,7 @@ def receive_device_data(request):
                 'public_key': pk, 
                 'csr':csr, 
                 'challengeCount': challengeCount,
+                'owner': owner
                 },
         )
 
@@ -288,6 +310,8 @@ def check_status(request, device_id):
                     
                     if device.challengeCount == CHALLENGE_COUNT_THRESHOLD:
                         messages.success(request, "Ownership challenge complete! Certificate now available for device with MAC address " + device.mac + ".")
+                        device.owner = request.user
+                        device.save()
                         return JsonResponse({"status": "complete", "count": device.challengeCount, "redirect": "/select-device",})
                     else:
                         return JsonResponse({"status": "ok", "count": device.challengeCount})
@@ -302,19 +326,12 @@ def check_status(request, device_id):
                 device.save()
                 return JsonResponse({"status": "updated", "count": device.challengeCount})
 
-def reconnect_device(request, mac_address):
-    print(mac_address)
-    try:
-        _, _ = Device.objects.update_or_create(
-            mac=mac_address,
-            defaults={'state': State.CONNECTED})
-    except Device.DoesNotExist:
-        pass  # MAC not registered in RA
-    
-    return HttpResponse("Device Reconnected", status=200)
+def view_device(request):
+    if not request.session.get("is_verified"):
+        return redirect("/")
 
-def temp_list_devices(request):
-    devices = Device.objects.all().order_by("-updatedAt")
+    devices = request.user.devices.all().order_by("-updatedAt")
+
     if request.method == "POST":
         device_id = request.POST.get("device_id")
         new_state = request.POST.get("state")
@@ -327,9 +344,17 @@ def temp_list_devices(request):
                 messages.success(request, f"Device {device.mac} set to {new_state}.")
             except (ValueError, Device.DoesNotExist):
                 messages.error(request, "Invalid device or state.")
-        return redirect("temp_list_devices")
-    return render(
-        request,
-        "temp-list-devices.html",
-        {"devices": devices, "state_choices": State.CHOICES},
-    )
+        return redirect("view_device")
+    
+    return render(request, 'view-device.html', {'devices': devices, "state_choices": State.CHOICES})
+
+def reconnect_device(request, mac_address):
+    print(mac_address)
+    try:
+        _, _ = Device.objects.update_or_create(
+            mac=mac_address,
+            defaults={'state': State.CONNECTED})
+    except Device.DoesNotExist:
+        pass  # MAC not registered in RA
+    
+    return HttpResponse("Device Reconnected", status=200)
