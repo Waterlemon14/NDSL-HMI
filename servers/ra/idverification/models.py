@@ -4,6 +4,17 @@ from django.conf import settings
 
 # Create your models here.
 
+class State:
+    CONNECTED = 'connected'
+    RECONNECTING = 'reconnecting'
+    SUSPENDED = 'suspended'
+
+    CHOICES = [
+        (CONNECTED, 'Connected'),
+        (RECONNECTING, 'Reconnecting'),
+        (SUSPENDED, 'Suspended'),
+    ]
+
 class Device(models.Model):
     updatedAt = models.DateTimeField(auto_now=True)
 
@@ -25,6 +36,12 @@ class Device(models.Model):
         null=True, 
         blank=True,
         related_name="devices"
+    )
+
+    state = models.CharField(
+        max_length=20,
+        choices=State.CHOICES,
+        default=State.CONNECTED,
     )
 
 class UserManager(BaseUserManager):
@@ -74,4 +91,3 @@ class User(AbstractBaseUser):
     def get_full_name(self):
         full_name = f"{self.firstName} {self.lastName}"
         return full_name.strip()
-    

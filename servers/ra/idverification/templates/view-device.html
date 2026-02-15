@@ -4,7 +4,7 @@
   <h1 class="text-xl font-semibold mb-3">View Devices</h1>
   <ol class="list-decimal list-inside">
     {% for device in user.devices.all %}
-    <li>MAC: {{ device.mac }}, IP: {{ device.ip }}, Manufacturer: {{ device.manufacturer }}</li>
+    <li>MAC: {{ device.mac }}, IP: {{ device.ip }}, Manufacturer: {{ device.manufacturer }}, State: {{ device.state }}</li>
     {% endfor %}
   </ol>
 {% endblock content %}

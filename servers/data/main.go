@@ -3,6 +3,7 @@ package main
 // https://venilnoronha.io/a-step-by-step-guide-to-mtls-in-go
 
 import (
+	"bytes"
 	"crypto/tls"
 	"crypto/x509"
 	"database/sql"
@@ -23,6 +24,30 @@ import (
 type Payload struct {
 	Temp float64 `json:"temp"`
 	Time string  `json:"time"`
+	MAC  string  `json:"MAC"`
+}
+
+type Report struct {
+	MAC     string `json:"mac"`
+	Anomaly string `json:"anomaly"`
+}
+
+// Device state constants (must match Django idverification.models.State)
+const (
+	StateConnected    = "connected"
+	StateReconnecting = "reconnecting"
+	StateSuspended    = "suspended"
+)
+
+type DeviceState string
+
+func (s DeviceState) IsValid() bool {
+	switch s {
+	case StateConnected, StateReconnecting, StateSuspended:
+		return true
+	default:
+		return false
+	}
 }
 
 func loadCertificate(basePath string) (tls.Certificate, error) {
@@ -71,15 +96,20 @@ func handlePing(w http.ResponseWriter, r *http.Request) {
 }
 
 func main() {
-	db, err := initDB("data.db")
+	dataDB, err := initDB("data.db")
 	if err != nil {
 		log.Fatalf("DB init error: %v", err)
+		return
 	}
-	defer db.Close()
+	defer dataDB.Close()
 
-	http.HandleFunc("/data", func(w http.ResponseWriter, r *http.Request) {
-		dataHandler(w, r, db)
-	})
+	raDB, err := sql.Open("sqlite", "../ra/db.sqlite3")
+	if err != nil {
+		log.Fatalf("RA DB open error: %v", err)
+		return
+	}
+	defer raDB.Close()
+
 	const BASE_PATH = "."
 
 	cert, err := loadCertificate(BASE_PATH)
@@ -107,6 +137,9 @@ func main() {
 		IdleTimeout: 4 * time.Second,
 	}
 
+	http.HandleFunc("/data", func(w http.ResponseWriter, r *http.Request) {
+		dataHandler(w, r, dataDB, raDB)
+	})
 	http.HandleFunc("/ping", handlePing)
 
 	err = server.ListenAndServeTLS("", "")
@@ -115,12 +148,21 @@ func main() {
 	}
 }
 
-func dataHandler(w http.ResponseWriter, r *http.Request, db *sql.DB) {
+func dataHandler(w http.ResponseWriter, r *http.Request, dataDB *sql.DB, raDB *sql.DB) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "Only POST allowed", http.StatusMethodNotAllowed)
 		return
 	}
 
+	// Extract the MAC from the Common Name (CN) in the subject
+	if r.TLS == nil || len(r.TLS.PeerCertificates) == 0 {
+		http.Error(w, "Client certificate required", http.StatusBadRequest)
+		return
+	}
+	// clientCert := r.TLS.PeerCertificates[0]
+	// mac := clientCert.Subject.CommonName
+
+	// Parsing data
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
 		http.Error(w, "Failed to read request body", http.StatusInternalServerError)
@@ -128,30 +170,69 @@ func dataHandler(w http.ResponseWriter, r *http.Request, db *sql.DB) {
 	}
 	defer r.Body.Close()
 
-	// Log and echo back the data
 	var p Payload
 	if err := json.Unmarshal(body, &p); err != nil {
 		http.Error(w, "Invalid JSON", http.StatusBadRequest)
 		return
 	}
 
-	// Insert into SQLite
-	_, err = db.Exec(`INSERT INTO received_data (client_timestamp, temp) VALUES (?, ?)`, p.Time, p.Temp)
+	mac := p.MAC
+
+	deviceState, err := checkDeviceState(raDB, mac)
 	if err != nil {
-		http.Error(w, "Database insert failed", http.StatusInternalServerError)
+		log.Printf("Checking device state error %s: %v", mac, err)
+		// http.Error(w, "Checking device state error", http.StatusConflict)
 		return
 	}
 
-	log.Printf("Stored data: Time=%s, Temp=%q\n", p.Time, p.Temp)
+	switch deviceState {
+	case StateSuspended:
+		log.Printf("Device Suspended: Reconnect")
+
+		// http.Error(w, "Device Suspended: Reconnect", http.StatusConflict)
+		return
+	case StateReconnecting:
+		if err := reconnectDevice(mac); err != nil {
+			log.Printf("Error reconnecting check for MAC %s: %v", mac, err)
+			// http.Error(w, "Reconnecting error", http.StatusInternalServerError)
+			return
+		}
+
+	default:
+		if anomaly, err := isAnomaly(dataDB, mac); err != nil {
+			http.Error(w, "Database error", http.StatusInternalServerError)
+			return
+		} else if anomaly {
+			if err := suspendDevice(mac); err != nil {
+				http.Error(w, "Failed to suspend device", http.StatusInternalServerError)
+				return
+			}
+		}
+	}
+
+	// Assume connected
+
+	// Insert into SQLite
+	_, err = dataDB.Exec(`
+		INSERT INTO received_data (mac, client_timestamp, temp) 
+		VALUES (?, ?, ?)`,
+		mac, p.Time, p.Temp,
+	)
+
+	if err != nil {
+		log.Printf("Database insert failed: %s", err)
+		// http.Error(w, "Database insert failed", http.StatusInternalServerError)
+		return
+	}
+	// log.Printf("Logged: %s", p.Time)
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
-	fmt.Fprintf(w, `{"status":"stored","client_timestamp":%s,"temp":%q}`, p.Time, p.Temp)
 
 }
 
 func initDB(path string) (*sql.DB, error) {
-	db, err := sql.Open("sqlite", path)
+	dataDB, err := sql.Open("sqlite", path)
 	if err != nil {
 		return nil, err
 	}
@@ -159,15 +240,132 @@ func initDB(path string) (*sql.DB, error) {
 	createTable := `
 	CREATE TABLE IF NOT EXISTS received_data (
 		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		mac TEXT,
 		temp TEXT,
 		client_timestamp TIMESTAMP,
 		created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 	);
 	`
-	_, err = db.Exec(createTable)
+	_, err = dataDB.Exec(createTable)
 	if err != nil {
 		return nil, err
 	}
 
-	return db, nil
+	return dataDB, nil
+}
+
+func checkDeviceState(raDB *sql.DB, mac string) (DeviceState, error) {
+	var state string
+	err := raDB.QueryRow(`
+		SELECT state
+		FROM idverification_device
+		WHERE mac = ?
+		LIMIT 1`,
+		mac,
+	).Scan(&state)
+
+	log.Printf("state (%s)", state)
+
+	if err != nil {
+		log.Printf("RA DB query error for MAC (%s) :  %v", mac, err)
+		return DeviceState(""), err
+	}
+	return DeviceState(state), nil
+}
+
+func reconnectDevice(mac string) error {
+	client := &http.Client{Timeout: 10 * time.Second}
+	reconnectURL := fmt.Sprintf("http://localhost:8000/reconnect/%s/", mac)
+
+	req, err := http.NewRequest("GET", reconnectURL, nil)
+	if err != nil {
+		// http.Error(w, "Internal error", http.StatusInternalServerError)
+		return err
+	}
+	resp, err := client.Do(req)
+	if err != nil {
+		log.Printf("Reconnect request failed: %v", err)
+		// http.Error(w, "Reconnect upstream unreachable", http.StatusBadGateway)
+		return err
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		log.Printf("Failed to read reconnect response body: %v", err)
+		return err
+	}
+	fmt.Println(string(body))
+
+	// http.Error(w, "Reconnecting Device", http.StatusConflict)
+	return nil
+}
+
+func suspendDevice(mac string) error {
+	fmt.Printf("%sThe variable time exceeds the calculated limit.%s\n", "\033[33m", "\033[0m")
+	client := &http.Client{Timeout: 10 * time.Second}
+	payload := Report{
+		MAC:     mac,
+		Anomaly: "disconnected",
+	}
+	jsonData, err := json.Marshal(payload)
+	if err != nil {
+		log.Printf("JSON marshal error: %v", err)
+		// http.Error(w, "Internal error", http.StatusInternalServerError)
+		return err
+	}
+	reqBody := bytes.NewBuffer(jsonData)
+	req, err := http.NewRequest("POST", "http://localhost:8000/report/", reqBody)
+	if err != nil {
+		log.Printf("Request body read error: %v", err)
+		// http.Error(w, "Internal error", http.StatusInternalServerError)
+		return err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := client.Do(req)
+	if err != nil {
+		log.Printf("Report request failed: %v", err)
+		// http.Error(w, "Anomaly reported but upstream unreachable", http.StatusBadGateway)
+		return err
+	}
+	defer resp.Body.Close()
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		log.Printf("Failed to read report response body: %v", err)
+	} else {
+		fmt.Println(string(body))
+	}
+
+	// http.Error(w, "Suspending Device", http.StatusConflict)
+	return nil
+}
+
+func isAnomaly(dataDB *sql.DB, mac string) (bool, error) {
+	var lastCreatedAt time.Time
+	err := dataDB.QueryRow(`
+		SELECT created_at
+		FROM received_data 
+		WHERE mac = ? 
+		ORDER BY created_at DESC 
+		LIMIT 1`,
+		mac,
+	).Scan(&lastCreatedAt)
+
+	if err == sql.ErrNoRows {
+		// First time seeing this MAC: no previous activity, so no anomaly
+		return false, nil
+	} else if err != nil {
+		log.Printf("Error: %v", err)
+		// http.Error(w, "Server Database error", http.StatusInternalServerError)
+		return false, err
+	}
+
+	now := time.Now()
+	disconnectTime := lastCreatedAt.Add(10 * time.Second)
+	// log.Printf("Error: %s", lastCreatedAt)
+	// log.Printf("Error: %s", now)
+	// log.Printf("Error: %s", disconnectTime)
+	// log.Printf("Error: %t", now.After(disconnectTime))
+
+	return now.After(disconnectTime), nil
 }
