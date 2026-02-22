@@ -1,9 +1,10 @@
 import ipaddress
 
-from idverification.models import Device
+from django.db.models import Q
+from idverification.models import Device, State
 
 def get_select_list(request):
-    devices = Device.objects.all().filter(certificate__isnull=True, owner__isnull=True)
+    devices = Device.objects.filter((Q(certificate__isnull=True) & Q(owner__isnull=True)) | (Q(state=State.REVOKED) & Q(owner=request.user)))
     client_ip = int(ipaddress.ip_address(request.META.get('REMOTE_ADDR')))
     device_match = []
     for device in devices:

@@ -251,39 +251,6 @@ def renew_cert(request, mac_address):
     print("CA renew error:", ca_response.status_code, ca_response.text)
     return HttpResponse(ca_response.text, status=ca_response.status_code)
 
-def revoke_cert(request):
-    if request.method != "POST":
-        return HttpResponse("Method not allowed", status=405)
-
-    device_id = request.POST.get("device_id")
-    try:
-        device = Device.objects.get(id=int(device_id))
-    except (Device.DoesNotExist, ValueError, TypeError):
-        messages.error(request, "Invalid device.")
-        return redirect("view_device")
-
-    if not device.certificate:
-        messages.error(request, "Device has no certificate to revoke.")
-        return redirect("view_device")
-
-    ca_response = requests.post(
-        ca_revoke_url,
-        json={"certificate": device.certificate, "reason": "user_revoked"},
-        cert=(cert_file, key_file),
-        verify=ca_file,
-    )
-
-    if ca_response.status_code == 200:
-        device.certificate = ""
-        device.state = State.REVOKED
-        device.save()
-        messages.success(request, f"Certificate for {device.mac} has been revoked.")
-    else:
-        print("CA revoke error:", ca_response.status_code, ca_response.text)
-        messages.error(request, f"Failed to revoke certificate: {ca_response.text}")
-
-    return redirect("view_device")
-
 @csrf_exempt
 def report_device(request):
     if request.method != "POST":
@@ -312,10 +279,6 @@ def report_device(request):
             )
 
             if device.certificate:
-                cert_file = basePathToRepo / "servers" / "ra" / "id_server.crt"
-                key_file = basePathToRepo / "servers" / "ra" / "id_server.key"
-                ca_file = basePathToRepo / "servers" / "ra" / "root-ca.crt"
-
                 ca_response = requests.post(
                     ca_revoke_url,
                     json={"certificate": device.certificate, "reason": "device_stolen"},
@@ -433,9 +396,27 @@ def view_device(request):
                 device.save()
                 messages.success(request, f"Device {device.mac.upper()} set to {State.RECONNECTING}.")
                 
-            elif action == "Remove":
-                device.delete()
-                messages.success(request, f"Device {device.mac} deleted from system.")
+            elif action == "Revoke":
+                if not device.certificate:
+                    messages.error(request, "Device has no certificate to revoke.")
+                    return redirect("view_device")
+
+                ca_response = requests.post(
+                    ca_revoke_url,
+                    json={"certificate": device.certificate, "reason": "user_revoked"},
+                    cert=(cert_file, key_file),
+                    verify=ca_file,
+                )
+
+                if ca_response.status_code == 200:
+                    device.certificate = ""
+                    device.state = State.REVOKED
+                    device.save()
+                    messages.success(request, f"Certificate for {device.mac} has been revoked.")
+                else:
+                    print("CA revoke error:", ca_response.status_code, ca_response.text)
+                    messages.error(request, f"Failed to revoke certificate: {ca_response.text}")
+
             return redirect("view_device")
         except (ValueError, Device.DoesNotExist):
             messages.error(request, f"Could not find device.")
