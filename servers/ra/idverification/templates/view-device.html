@@ -28,7 +28,16 @@
           <td class="text-center py-3 whitespace-nowrap text-sm text-gray-900 font-mono uppercase">{{ device.mac }}</td>
           <td class="text-center py-3 whitespace-nowrap text-sm text-gray-900 font-mono">{{ device.ip }}</td>
           <td class="text-center py-3 whitespace-normal text-sm text-gray-900">{{ device.manufacturer }}</td>
-          <td class="text-center py-3 whitespace-normal text-sm text-gray-900 capitalize">{{ device.state }}</td>
+          <td class="text-center py-3 whitespace-normal text-sm">
+            <span class="px-2.5 py-1 rounded-full font-medium capitalize
+            {% if device.state == 'connected' %}bg-green-100 text-green-800
+            {% elif device.state == 'reconnecting' %}bg-yellow-100 text-yellow-800
+            {% elif device.state == 'suspended' %}bg-pink-100 text-pink-800
+            {% elif device.state == 'revoked' %}bg-red-100 text-red-800
+            {% endif %}">
+              {{ device.state }}
+            </span>
+          </td>
           <td class="px-3 w-1">
             <div class="flex justify-center items-center gap-x-3">
             {% if device.state == "suspended" %}
