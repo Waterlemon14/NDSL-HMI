@@ -238,10 +238,9 @@ def report_device(request):
 
     if anomaly == "disconnected":
         try:
-            _, _ = Device.objects.update_or_create(
-            mac=mac,
-            defaults={'state': State.SUSPENDED},
-        )
+            device = Device.objects.get(mac=mac)
+            device.state = State.SUSPENDED
+            device.save()
         except Device.DoesNotExist:
             pass  # MAC not registered in RA
 
@@ -266,10 +265,8 @@ def start_challenge(request, device_id):
             ", and after " + str(interval) + " seconds of downtime, reconnect within 30 seconds.\n" + \
             "Count: " + str(device.challengeCount)
 
-        device, _ = Device.objects.update_or_create(
-            mac=device.mac,
-            defaults={'interval': interval},
-        )
+        device.interval = interval
+        device.save()
 
         request.session["start_time"] = timezone.now().isoformat()
         request.session["end_time"] = (timezone.now() + timedelta(seconds=interval)).isoformat()
@@ -361,9 +358,9 @@ def view_device(request):
 def reconnect_device(request, mac_address):
     print(mac_address)
     try:
-        _, _ = Device.objects.update_or_create(
-            mac=mac_address,
-            defaults={'state': State.CONNECTED})
+        device = Device.objects.get(mac=mac_address)
+        device.state = State.CONNECTED
+        device.save()
     except Device.DoesNotExist:
         pass  # MAC not registered in RA
     
