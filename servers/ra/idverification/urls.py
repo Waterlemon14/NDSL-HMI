@@ -15,4 +15,5 @@ urlpatterns = [
     path('ownership-challenge/<int:device_id>/', views.ownership_challenge, name="ownership_challenge"),
     path('start-challenge/<int:device_id>/', views.start_challenge, name="start_challenge"),
     path('check-status/<int:device_id>/', views.check_status, name="check_status"),
+    path('logout-view/', views.logout_view, name="logout_view"),
 ]

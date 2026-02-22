@@ -8,7 +8,7 @@ from django.views.decorators.csrf import ensure_csrf_cookie, csrf_exempt
 from django.utils import timezone
 from django.utils.dateparse import parse_datetime
 from django.contrib import messages
-from django.contrib.auth import login
+from django.contrib.auth import login, logout
 from datetime import timedelta
 
 import json
@@ -75,7 +75,6 @@ def enter_otp(request):
         print(response_body)
 
         if (errors == None and request.session.get("firstName") and request.session.get("lastName")):
-            request.session["is_verified"] = True
             user, created = User.objects.get_or_create(
                 uin=uin,
                 defaults={
@@ -97,7 +96,7 @@ def enter_otp(request):
     return render(request, 'enter-otp.html')
 
 def select_device(request):
-    if not request.session.get("is_verified"):
+    if not request.user.is_authenticated:
         return redirect("/")
     
     likely, others = get_select_list(request)
@@ -252,6 +251,9 @@ def report_device(request):
 
 
 def ownership_challenge(request, device_id):
+    if not request.user.is_authenticated:
+        return redirect("/")
+        
     device = Device.objects.get(id=int(device_id))
 
     return render(request, "ownership-challenge.html", {"info": "Disconnect your device now", "device": device})
@@ -327,7 +329,7 @@ def check_status(request, device_id):
                 return JsonResponse({"status": "updated", "count": device.challengeCount})
 
 def view_device(request):
-    if not request.session.get("is_verified"):
+    if not request.user.is_authenticated:
         return redirect("/")
 
     devices = request.user.devices.all().order_by("-updatedAt")
@@ -358,3 +360,7 @@ def reconnect_device(request, mac_address):
         pass  # MAC not registered in RA
     
     return HttpResponse("Device Reconnected", status=200)
+
+def logout_view(request):
+    logout(request)
+    return redirect("index")
