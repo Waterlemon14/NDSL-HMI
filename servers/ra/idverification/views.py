@@ -108,9 +108,6 @@ def select_device(request):
                 return render(request, 'select-device.html', {'likely': likely, 'others': others, 'error': "Device certificate already available."})
             else:
                 return redirect("/ownership-challenge/" + request.POST.get("device-select"))
-        elif action == "Clear All Devices":
-            Device.objects.all().delete()
-            return render(request, 'select-device.html', {'likely': likely, 'others': others})
     
     return render(request, 'select-device.html', {'likely': likely, 'others': others})
 
@@ -332,7 +329,8 @@ def view_device(request):
     if not request.user.is_authenticated:
         return redirect("/")
 
-    devices = request.user.devices.all().order_by("-updatedAt")
+    # devices = request.user.devices.all().order_by("-updatedAt")
+    devices = Device.objects.all().order_by("-updatedAt")
 
     if request.method == "POST":
         device_id = request.POST.get("device_id")
