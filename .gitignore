@@ -33,8 +33,6 @@ venv/
 # Editor/IDE
 # .idea/
 .vscode/
-.claude/
-.cursor/
 
 # private keys
 *.key
