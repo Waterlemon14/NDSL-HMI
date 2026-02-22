@@ -60,3 +60,10 @@ __pycache__/
 # CA Files
 *.srl
 servers/ca/CA
+
+# Ignore all files in the ra directory except for the ones that are necessary for the server to run
+servers/ra/bin
+servers/ra/__pycache__
+servers/ra/lib
+servers/ra/share
+servers/ra/pyvenv.cfg

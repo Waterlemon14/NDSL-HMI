@@ -1,0 +1,12 @@
+{% extends "base-sidebar.html" %}
+
+{% block content %}
+    <h1 class="text-xl font-semibold mb-3">Verify Ownership Of Device</h1>
+    <p id="counter" class="text-black font-normal mb-3">Challenge counter: 0</p>
+    <p id="info" class="text-black font-normal mb-3">{{ info }}</p>
+    <button id="start-challenge" onclick="startChallenge()">Start Challenge</button>
+    <div id="data-holder" data-deviceid="{{ device.id }}"></div>
+
+  {% load static %}
+  <script src="{% static 'challenge.js' %}"></script>
+{% endblock content %}
