@@ -27,6 +27,12 @@ CHALLENGE_COUNT_THRESHOLD = 3
 basePathToRepo = Path(__file__).parent.parent.parent.parent
 
 ca_url = "https://localhost:15000/sign"
+ca_renew_url = "https://localhost:15000/renew"
+ca_revoke_url = "https://localhost:15000/revoke"
+
+cert_file = basePathToRepo / "servers" / "ra" / "id_server.crt"
+key_file = basePathToRepo / "servers" / "ra" / "id_server.key"
+ca_file = basePathToRepo / "servers" / "ra" / "root-ca.crt"
 
 registeringMACs = []
 
@@ -173,12 +179,6 @@ def download_cert(request, mac_address):
         return HttpResponse(device.certificate, content_type="application/x-pem-file")
 
     elif device.challengeCount == CHALLENGE_COUNT_THRESHOLD:
-        ca_url = "https://localhost:15000/sign"
-
-        cert_file = basePathToRepo / "servers" / "ra" / "id_server.crt"
-        key_file = basePathToRepo / "servers" / "ra" / "id_server.key"
-        ca_file = basePathToRepo / "servers" / "ra" / "root-ca.crt"
-
         if device.public_key:
             headers = {"Content-Type": "application/json"}
             payload = {
@@ -227,6 +227,67 @@ def download_cert(request, mac_address):
     return HttpResponse("Cert not ready", status=404)
 
 @csrf_exempt
+def renew_cert(request, mac_address):
+    if request.method != "POST":
+        return HttpResponse("Method not allowed", status=405)
+
+    try:
+        device = Device.objects.get(mac=mac_address)
+    except Device.DoesNotExist:
+        return HttpResponse("Device not found", status=404)
+
+    cert_pem = request.body
+
+    ca_response = requests.post(
+        ca_renew_url,
+        data=cert_pem,
+        headers={"Content-Type": "application/x-pem-file"},
+        cert=(cert_file, key_file),
+        verify=ca_file,
+    )
+
+    if ca_response.status_code == 200:
+        device.certificate = ca_response.text
+        device.save()
+        return HttpResponse(device.certificate, content_type="application/x-pem-file")
+
+    print("CA renew error:", ca_response.status_code, ca_response.text)
+    return HttpResponse(ca_response.text, status=ca_response.status_code)
+
+def revoke_cert(request):
+    if request.method != "POST":
+        return HttpResponse("Method not allowed", status=405)
+
+    device_id = request.POST.get("device_id")
+    try:
+        device = Device.objects.get(id=int(device_id))
+    except (Device.DoesNotExist, ValueError, TypeError):
+        messages.error(request, "Invalid device.")
+        return redirect("view_device")
+
+    if not device.certificate:
+        messages.error(request, "Device has no certificate to revoke.")
+        return redirect("view_device")
+
+    ca_response = requests.post(
+        ca_revoke_url,
+        json={"certificate": device.certificate, "reason": "user_revoked"},
+        cert=(cert_file, key_file),
+        verify=ca_file,
+    )
+
+    if ca_response.status_code == 200:
+        device.certificate = ""
+        device.state = State.REVOKED
+        device.save()
+        messages.success(request, f"Certificate for {device.mac} has been revoked.")
+    else:
+        print("CA revoke error:", ca_response.status_code, ca_response.text)
+        messages.error(request, f"Failed to revoke certificate: {ca_response.text}")
+
+    return redirect("view_device")
+
+@csrf_exempt
 def report_device(request):
     if request.method != "POST":
         return HttpResponse("Method not allowed", status=400)
@@ -242,9 +303,36 @@ def report_device(request):
     if anomaly == "disconnected":
         try:
             _, _ = Device.objects.update_or_create(
-            mac=mac,
-            defaults={'state': State.SUSPENDED},
-        )
+                mac=mac,
+                defaults={'state': State.SUSPENDED},
+            )
+            
+        except Device.DoesNotExist:
+            pass  # MAC not registered in RA
+    else: #elif anomaly == "stolen":
+        try:
+            device, _ = Device.objects.update_or_create(
+                mac=mac,
+                defaults={'state': State.REVOKED},
+            )
+
+            if device.certificate:
+                cert_file = basePathToRepo / "servers" / "ra" / "id_server.crt"
+                key_file = basePathToRepo / "servers" / "ra" / "id_server.key"
+                ca_file = basePathToRepo / "servers" / "ra" / "root-ca.crt"
+
+                ca_response = requests.post(
+                    ca_revoke_url,
+                    json={"certificate": device.certificate, "reason": "device_stolen"},
+                    cert=(cert_file, key_file),
+                    verify=ca_file,
+                )
+                if ca_response.status_code == 200:
+                    device.certificate = ""
+                    device.save()
+                    print(f"Revoked certificate for reported device {mac}")
+                else:
+                    print(f"CA revoke failed for {mac}: {ca_response.status_code} {ca_response.text}")
         except Device.DoesNotExist:
             pass  # MAC not registered in RA
 

@@ -8,11 +8,13 @@ class State:
     CONNECTED = 'connected'
     RECONNECTING = 'reconnecting'
     SUSPENDED = 'suspended'
+    REVOKED = 'revoked'
 
     CHOICES = [
         (CONNECTED, 'Connected'),
         (RECONNECTING, 'Reconnecting'),
         (SUSPENDED, 'Suspended'),
+        (REVOKED, 'Revoked'),
     ]
 
 class Device(models.Model):

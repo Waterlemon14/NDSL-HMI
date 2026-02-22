@@ -4,19 +4,28 @@
   <h1 class="text-xl font-semibold mb-3 text-center">View Devices</h1>
   <ol>
     {% for device in devices %}
-    <li class="flex items-center justify-center">
-      <span class="text-gray-500 font-medium mr-4">{{ forloop.counter }}.</span>
-      <form action="" method="POST">
-        <label for="device-{{ device.id }}">MAC: {{ device.mac }}, IP: {{ device.ip }}, Manufacturer: {{ device.manufacturer }}, State: </label>
+    <li class="flex items-center justify-center gap-3 mb-2">
+      <span class="text-gray-500 font-medium">{{ forloop.counter }}.</span>
+      <span>MAC: {{ device.mac }}, IP: {{ device.ip }}, Manufacturer: {{ device.manufacturer }}</span>
+      <span class="inline-block px-2 py-0.5 rounded text-sm font-medium
+        {% if device.state == 'connected' %}bg-green-200 text-green-800
+        {% elif device.state == 'reconnecting' %}bg-yellow-200 text-yellow-800
+        {% elif device.state == 'suspended' %}bg-pink-200 text-pink-800
+        {% elif device.state == 'revoked' %}bg-red-200 text-red-800
+        {% endif %}">{{ device.get_state_display }}</span>
+      <form action="" method="POST" class="inline">
+        {% csrf_token %}
         <input type="hidden" name="device_id" value="{{ device.id }}">
-        <select name="state" id="{{ device.id }}">
-        {% for choice in state_choices %}
-          <option value="{{ choice.0 }}" {% if choice.0 == device.state %} selected {% endif %}>{{ choice.1 }}</option>
-        {% endfor %}
-      </select>
-      {% csrf_token %}
-      <button type="submit">Update</button>
+        <input type="hidden" name="state" value="reconnecting">
+        <button type="submit" class="px-3 py-1 rounded bg-yellow-400 hover:bg-yellow-500 text-white font-medium">Reconnect</button>
       </form>
+      {% if device.certificate %}
+      <form action="{% url 'revoke_cert' %}" method="POST" class="inline">
+        {% csrf_token %}
+        <input type="hidden" name="device_id" value="{{ device.id }}">
+        <button type="submit" class="px-3 py-1 rounded bg-red-600 hover:bg-red-700 text-white font-medium" onclick="return confirm('Revoke certificate for {{ device.mac }}?')">Revoke</button>
+      </form>
+      {% endif %}
     </li>
     {% endfor %}
   </ol>
