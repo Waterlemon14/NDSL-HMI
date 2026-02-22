@@ -110,11 +110,12 @@ def select_device(request):
 
     if request.method == "POST":
         action = request.POST.get("action")
+        device_id = request.POST.get("device_id")
         if action == "Request Certificate":
-            if Device.objects.get(id=int(request.POST.get("device-select"))).certificate:
+            if Device.objects.get(id=device_id).certificate:
                 return render(request, 'select-device.html', {'likely': likely, 'others': others, 'error': "Device certificate already available."})
             else:
-                return redirect("/ownership-challenge/" + request.POST.get("device-select"))
+                return redirect("/ownership-challenge/" + device_id)
     
     return render(request, 'select-device.html', {'likely': likely, 'others': others})
 
