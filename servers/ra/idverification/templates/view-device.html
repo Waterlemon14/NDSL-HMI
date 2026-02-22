@@ -1,25 +1,64 @@
 {% extends "base-sidebar-full.html" %}
 
 {% block content %}
-  <h1 class="text-xl font-semibold mb-3 text-center">View Devices</h1>
-  <ol>
-    {% for device in devices %}
-    <li class="flex items-center justify-center">
-      <span class="text-gray-500 font-medium mr-4">{{ forloop.counter }}.</span>
-      <form action="" method="POST">
-        <label for="device-{{ device.id }}">MAC: {{ device.mac }}, IP: {{ device.ip }}, Manufacturer: {{ device.manufacturer }}, State: </label>
-        <input type="hidden" name="device_id" value="{{ device.id }}">
-        <select name="state" id="{{ device.id }}">
-        {% for choice in state_choices %}
-          <option value="{{ choice.0 }}" {% if choice.0 == device.state %} selected {% endif %}>{{ choice.1 }}</option>
+  <h1 class="text-xl font-semibold mb-3 text-center">Your Devices</h1>
+  <div class="overflow-x-auto rounded-xl border border-gray-200 bg-white shadow-sm">
+    <table class="table-auto min-w-full">
+      <thead class="bg-gray-50 border-b-4 border-gray-300">
+        <tr>
+          <th scope="col" class="px-6 py-3 text-center uppercase tracking-wider">#</th>
+          <th scope="col" class="px-6 py-3 text-center uppercase tracking-wider">MAC</th>
+          <th scope="col" class="px-6 py-3 text-center uppercase tracking-wider">IP</th>
+          <th scope="col" class="px-6 py-3 text-center uppercase tracking-wider">Manufacturer</th>
+          <th scope="col" class="px-6 py-3 text-center uppercase tracking-wider">State</th>
+          <th scope="col" class="px-6 py-3 text-center uppercase tracking-wider">Actions</th>
+        </tr>
+      </thead>
+      <tbody class="divide-y divide-gray-200">
+        {% for device in devices %}
+        {% ifchanged device.state %}
+          {% if not forloop.first %} 
+            <tr class="border-b-4 bg-gray-300"> 
+              <td colspan="6"></td> 
+            </tr>
+          {% endif %}
+        {% endifchanged %}
+        <tr class="hover:bg-gray-50 transition-colors">
+          <th scope="row" class="text-center py-3 text-sm font-medium text-gray-900">{{ forloop.counter }}</th>
+          <td class="text-center py-3 whitespace-nowrap text-sm text-gray-900 font-mono uppercase">{{ device.mac }}</td>
+          <td class="text-center py-3 whitespace-nowrap text-sm text-gray-900 font-mono">{{ device.ip }}</td>
+          <td class="text-center py-3 whitespace-normal text-sm text-gray-900">{{ device.manufacturer }}</td>
+          <td class="text-center py-3 whitespace-normal text-sm text-gray-900 capitalize">{{ device.state }}</td>
+          <td class="px-3 w-1">
+            <div class="flex justify-center items-center gap-x-3">
+            {% if device.state == "suspended" %}
+            <form action="" method="POST">
+              {% csrf_token %}
+              <input type="hidden" name="device_id" value="{{ device.id }}">      
+              <button type="submit" name="action" value="Reconnect" class="mt-1 mb-1 px-3 py-1.5 text-white font-semibold bg-green-500 rounded-xl hover:bg-green-700">Reconnect</button>
+            </form>
+            {% else %}
+            <button disabled type="submit" class="mt-1 mb-1 px-3 py-1.5 text-gray-500 font-semibold bg-gray-200 rounded-xl">Reconnect</button>
+            {% endif %}
+            <form action="" method="POST">
+              {% csrf_token %}
+              <input type="hidden" name="device_id" value="{{ device.id }}">      
+              <button type="submit" name="action" value="Remove" class="mt-1 mb-1 px-3 py-1.5 text-white font-semibold bg-red-500 rounded-xl hover:bg-red-700">Remove</button>
+            </form>
+            </div>
+          </td>
+        </tr>
+        {% empty %}
+          <tr>
+          <td colspan="6" class="px-6 py-5 text-center">            
+            <h3 class="mt-1 text-sm font-semibold text-gray-900">No devices found</h3>
+            <p class="mt-1 text-sm text-gray-500">Your devices will appear here once you have registered them to the network.</p>
+          </td>
+        </tr>
         {% endfor %}
-      </select>
-      {% csrf_token %}
-      <button type="submit">Update</button>
-      </form>
-    </li>
-    {% endfor %}
-  </ol>
+      </tbody>
+    </table>
+  </div>
   {% if messages %}
     {% for message in messages %}
       {% if message.level == DEFAULT_MESSAGE_LEVELS.ERROR %}

@@ -9,6 +9,7 @@ from django.utils import timezone
 from django.utils.dateparse import parse_datetime
 from django.contrib import messages
 from django.contrib.auth import login, logout
+from django.db.models import Case, When
 from datetime import timedelta
 
 import json
@@ -329,22 +330,31 @@ def view_device(request):
     if not request.user.is_authenticated:
         return redirect("/")
 
-    # devices = request.user.devices.all().order_by("-updatedAt")
-    devices = Device.objects.all().order_by("-updatedAt")
+    devices = request.user.devices.all().annotate(
+        state_priority=Case(
+            When(state=State.SUSPENDED, then=0),
+            When(state=State.RECONNECTING, then=1),
+            When(state=State.CONNECTED, then=2),
+            default=3,
+        )
+    ).order_by("state_priority", "-updatedAt")
 
     if request.method == "POST":
         device_id = request.POST.get("device_id")
-        new_state = request.POST.get("state")
-        if device_id and new_state and new_state in (State.CONNECTED, State.RECONNECTING, State.SUSPENDED):
-            try:
-                device, _ = Device.objects.update_or_create(
-                    id=int(device_id),
-                    defaults={'state': new_state},
-                )
-                messages.success(request, f"Device {device.mac} set to {new_state}.")
-            except (ValueError, Device.DoesNotExist):
-                messages.error(request, "Invalid device or state.")
-        return redirect("view_device")
+        action = request.POST.get("action")
+        try:
+            device = Device.objects.get(id=int(device_id))
+            if action == "Reconnect":
+                device.state = State.RECONNECTING
+                device.save()
+                messages.success(request, f"Device {device.mac.upper()} set to {State.RECONNECTING}.")
+                
+            elif action == "Remove":
+                device.delete()
+                messages.success(request, f"Device {device.mac} deleted from system.")
+            return redirect("view_device")
+        except (ValueError, Device.DoesNotExist):
+            messages.error(request, f"Could not find device.")
     
     return render(request, 'view-device.html', {'devices': devices, "state_choices": State.CHOICES})
 
