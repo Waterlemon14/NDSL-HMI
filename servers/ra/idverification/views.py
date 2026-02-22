@@ -214,6 +214,7 @@ def download_cert(request, mac_address):
 
         if ca_response.status_code == 200:
             device.certificate = ca_response.text
+            device.challengeCount = 0
             device.save()
 
         else:
