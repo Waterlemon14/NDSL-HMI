@@ -33,6 +33,8 @@ venv/
 # Editor/IDE
 # .idea/
 .vscode/
+.claude/
+.cursor/
 
 # private keys
 *.key
@@ -40,6 +42,7 @@ venv/
 ida_partner.pem
 *.crt
 *.csr
+*.cnf
 config.toml
 
 # OS Specific
@@ -58,3 +61,4 @@ __pycache__/
 
 # CA Files
 *.srl
+servers/ca/CA
