@@ -360,6 +360,7 @@ def check_status(request, device_id):
                     if device.challengeCount == CHALLENGE_COUNT_THRESHOLD:
                         messages.success(request, "Ownership challenge complete! Certificate now available for device with MAC address " + device.mac + ".")
                         device.owner = request.user
+                        device.state = State.RECONNECTING
                         device.save()
                         return JsonResponse({"status": "complete", "count": device.challengeCount, "redirect": "/select-device",})
                     else:
@@ -412,6 +413,7 @@ def view_device(request):
 
                 if ca_response.status_code == 200:
                     device.certificate = ""
+                    device.challengeCount = 0
                     device.state = State.REVOKED
                     device.save()
                     messages.success(request, f"Certificate for {device.mac} has been revoked.")

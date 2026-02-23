@@ -37,6 +37,7 @@ const (
 	StateConnected    = "connected"
 	StateReconnecting = "reconnecting"
 	StateSuspended    = "suspended"
+	StateRevoked      = "revoked"
 )
 
 type DeviceState string
@@ -186,6 +187,11 @@ func dataHandler(w http.ResponseWriter, r *http.Request, dataDB *sql.DB, raDB *s
 	}
 
 	switch deviceState {
+	case StateRevoked:
+		log.Printf("Device Revoked")
+
+		// http.Error(w, "Device Suspended: Reconnect", http.StatusConflict)
+		return
 	case StateSuspended:
 		log.Printf("Device Suspended: Reconnect")
 
