@@ -49,12 +49,18 @@
             {% else %}
             <button disabled type="submit" class="mt-1 mb-1 px-3 py-1.5 text-gray-500 font-semibold bg-gray-200 rounded-xl">Reconnect</button>
             {% endif %}
+
+            {% if device.state != "revoked" %}
             <form action="" method="POST">
               {% csrf_token %}
               <input type="hidden" name="device_id" value="{{ device.id }}">      
               <button type="submit" name="action" value="Revoke" class="mt-1 mb-1 px-3 py-1.5 text-white font-semibold bg-red-500 rounded-xl hover:bg-red-700" onclick="return confirm('Revoke certificate for {{ device.mac }}?')">Revoke</button>
             </form>
+            {% else %}
+            <button disabled type="submit" class="mt-1 mb-1 px-3 py-1.5 text-gray-500 font-semibold bg-gray-200 rounded-xl">Revoke</button>
+            {% endif %}
             </div>
+
           </td>
         </tr>
         {% empty %}
