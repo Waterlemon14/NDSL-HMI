@@ -6,23 +6,32 @@
     <script src="https://cdn.tailwindcss.com"></script>
   </head>
   <body class="bg-gray-100 flex min-h-screen">
-    <aside class="w-64 bg-white shadow-xl flex-col flex-none z-10">
+    <aside class="w-64 bg-white shadow-xl flex flex-col z-10 h-screen">
       <div class="h-20 flex items-center justify-center border-b border-gray-200">
         <h1 class="text-xl font-bold text-gray-800 text-center">{{ user.get_full_name }}</h1>
       </div>
-      <nav class="flex-1 px-4 py-6">
-        <ul class="space-y-2">
+      <nav class="flex-1 px-4 py-6 flex flex-col">
+        <ul class="space-y-2 flex-1">
           <li>
             <a href="{% url 'select_device' %}" class="flex items-center px-4 py-3 text-gray-700 hover:bg-blue-50 hover:text-blue-600 rounded-lg transition-colors group">
-              <span class="font-medium">Request Certificate</span>
+              <span class="font-medium">Register Device</span>
             </a>
           </li>
           <li>
             <a href="{% url 'view_device' %}" class="flex items-center px-4 py-3 text-gray-700 hover:bg-blue-50 hover:text-blue-600 rounded-lg transition-colors group">
-              <span class="font-medium">View Devices</span>
+              <span class="font-medium">View Your Devices</span>
             </a>
           </li>
         </ul>
+        
+        <div class="pt-4 border-t border-gray-100">
+          <form action="{% url 'logout_view' %}" method="post">
+            {% csrf_token %}
+            <button type="submit" class="w-full flex items-center px-4 py-3 text-gray-700 hover:bg-red-50 hover:text-red-600 rounded-lg transition-colors group">
+              <span class="font-medium">Log Out</span>
+            </button>
+          </form>
+        </div>
       </nav>
     </aside>
     <div class="flex-1 p-6 flex items-center justify-center">

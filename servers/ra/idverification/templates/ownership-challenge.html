@@ -1,11 +1,25 @@
 {% extends "base-sidebar.html" %}
 
 {% block content %}
-    <h1 class="text-xl font-semibold mb-3">Verify Ownership Of Device</h1>
-    <p id="counter" class="text-black font-normal mb-3">Challenge counter: 0</p>
-    <p id="info" class="text-black font-normal mb-3">{{ info }}</p>
-    <button id="start-challenge" onclick="startChallenge()">Start Challenge</button>
-    <div id="data-holder" data-deviceid="{{ device.id }}"></div>
+  <div class="grid grid-cols-3 items-center">
+    <div class="text-left">
+      <a href="{% url 'select_device' %}" class="inline-flex items-center text-sm font-medium text-gray-400 hover:text-gray-600 transition-colors">
+        <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" />
+        </svg>
+        Back
+      </a>
+    </div>
+    <div class="text-center whitespace-nowrap">
+      <h1 class="text-xl font-semibold">Verify Ownership</h1>
+    </div>
+    <div></div>
+  </div>
+  <p class="text-gray-500 italic mb-3">IP: {{device.ip}}, MAC: {{device.mac}}, Manufacturer: {{device.manufacturer}}</p>
+  <p id="counter" class="text-black font-normal mb-3">Challenge Counter: {{ device.challengeCount }}</p>
+  <p id="info" class="text-black font-normal">{{ info }}</p>
+  <button id="start-challenge" class="mt-4 px-4 py-2 text-white font-semibold bg-sky-500 rounded-xl hover:bg-sky-700" onclick="startChallenge()">Start Challenge</button>
+  <div id="data-holder" data-deviceid="{{ device.id }}"></div>
 
   {% load static %}
   <script src="{% static 'challenge.js' %}"></script>

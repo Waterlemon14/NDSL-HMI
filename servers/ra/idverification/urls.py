@@ -13,8 +13,8 @@ urlpatterns = [
     path('reconnect/<str:mac_address>/', views.reconnect_device, name="reconnect_device"),
     path('download-cert/<str:mac_address>/', views.download_cert, name="download_cert"),
     path('renew-cert/<str:mac_address>/', views.renew_cert, name="renew_cert"),
-    path('revoke-cert/', views.revoke_cert, name="revoke_cert"),
     path('ownership-challenge/<int:device_id>/', views.ownership_challenge, name="ownership_challenge"),
     path('start-challenge/<int:device_id>/', views.start_challenge, name="start_challenge"),
     path('check-status/<int:device_id>/', views.check_status, name="check_status"),
+    path('logout-view/', views.logout_view, name="logout_view"),
 ]

@@ -8,7 +8,8 @@ from django.views.decorators.csrf import ensure_csrf_cookie, csrf_exempt
 from django.utils import timezone
 from django.utils.dateparse import parse_datetime
 from django.contrib import messages
-from django.contrib.auth import login
+from django.contrib.auth import login, logout
+from django.db.models import Case, When
 from datetime import timedelta
 
 import json
@@ -81,7 +82,6 @@ def enter_otp(request):
         print(response_body)
 
         if (errors == None and request.session.get("firstName") and request.session.get("lastName")):
-            request.session["is_verified"] = True
             user, created = User.objects.get_or_create(
                 uin=uin,
                 defaults={
@@ -103,21 +103,19 @@ def enter_otp(request):
     return render(request, 'enter-otp.html')
 
 def select_device(request):
-    if not request.session.get("is_verified"):
+    if not request.user.is_authenticated:
         return redirect("/")
     
     likely, others = get_select_list(request)
 
     if request.method == "POST":
         action = request.POST.get("action")
+        device_id = request.POST.get("device_id")
         if action == "Request Certificate":
-            if Device.objects.get(id=int(request.POST.get("device-select"))).certificate:
+            if Device.objects.get(id=device_id).certificate:
                 return render(request, 'select-device.html', {'likely': likely, 'others': others, 'error': "Device certificate already available."})
             else:
-                return redirect("/ownership-challenge/" + request.POST.get("device-select"))
-        elif action == "Clear All Devices":
-            Device.objects.all().delete()
-            return render(request, 'select-device.html', {'likely': likely, 'others': others})
+                return redirect("/ownership-challenge/" + device_id)
     
     return render(request, 'select-device.html', {'likely': likely, 'others': others})
 
@@ -217,6 +215,7 @@ def download_cert(request, mac_address):
 
         if ca_response.status_code == 200:
             device.certificate = ca_response.text
+            device.challengeCount = 0
             device.save()
 
         else:
@@ -254,39 +253,6 @@ def renew_cert(request, mac_address):
     print("CA renew error:", ca_response.status_code, ca_response.text)
     return HttpResponse(ca_response.text, status=ca_response.status_code)
 
-def revoke_cert(request):
-    if request.method != "POST":
-        return HttpResponse("Method not allowed", status=405)
-
-    device_id = request.POST.get("device_id")
-    try:
-        device = Device.objects.get(id=int(device_id))
-    except (Device.DoesNotExist, ValueError, TypeError):
-        messages.error(request, "Invalid device.")
-        return redirect("view_device")
-
-    if not device.certificate:
-        messages.error(request, "Device has no certificate to revoke.")
-        return redirect("view_device")
-
-    ca_response = requests.post(
-        ca_revoke_url,
-        json={"certificate": device.certificate, "reason": "user_revoked"},
-        cert=(cert_file, key_file),
-        verify=ca_file,
-    )
-
-    if ca_response.status_code == 200:
-        device.certificate = ""
-        device.state = State.REVOKED
-        device.save()
-        messages.success(request, f"Certificate for {device.mac} has been revoked.")
-    else:
-        print("CA revoke error:", ca_response.status_code, ca_response.text)
-        messages.error(request, f"Failed to revoke certificate: {ca_response.text}")
-
-    return redirect("view_device")
-
 @csrf_exempt
 def report_device(request):
     if request.method != "POST":
@@ -302,11 +268,9 @@ def report_device(request):
 
     if anomaly == "disconnected":
         try:
-            _, _ = Device.objects.update_or_create(
-                mac=mac,
-                defaults={'state': State.SUSPENDED},
-            )
-            
+            device = Device.objects.get(mac=mac)
+            device.state = State.SUSPENDED
+            device.save()
         except Device.DoesNotExist:
             pass  # MAC not registered in RA
     else: #elif anomaly == "stolen":
@@ -317,10 +281,6 @@ def report_device(request):
             )
 
             if device.certificate:
-                cert_file = basePathToRepo / "servers" / "ra" / "id_server.crt"
-                key_file = basePathToRepo / "servers" / "ra" / "id_server.key"
-                ca_file = basePathToRepo / "servers" / "ra" / "root-ca.crt"
-
                 ca_response = requests.post(
                     ca_revoke_url,
                     json={"certificate": device.certificate, "reason": "device_stolen"},
@@ -340,6 +300,9 @@ def report_device(request):
 
 
 def ownership_challenge(request, device_id):
+    if not request.user.is_authenticated:
+        return redirect("/")
+        
     device = Device.objects.get(id=int(device_id))
 
     return render(request, "ownership-challenge.html", {"info": "Disconnect your device now", "device": device})
@@ -354,10 +317,8 @@ def start_challenge(request, device_id):
             ", and after " + str(interval) + " seconds of downtime, reconnect within 30 seconds.\n" + \
             "Count: " + str(device.challengeCount)
 
-        device, _ = Device.objects.update_or_create(
-            mac=device.mac,
-            defaults={'interval': interval},
-        )
+        device.interval = interval
+        device.save()
 
         request.session["start_time"] = timezone.now().isoformat()
         request.session["end_time"] = (timezone.now() + timedelta(seconds=interval)).isoformat()
@@ -399,6 +360,7 @@ def check_status(request, device_id):
                     if device.challengeCount == CHALLENGE_COUNT_THRESHOLD:
                         messages.success(request, "Ownership challenge complete! Certificate now available for device with MAC address " + device.mac + ".")
                         device.owner = request.user
+                        device.state = State.RECONNECTING
                         device.save()
                         return JsonResponse({"status": "complete", "count": device.challengeCount, "redirect": "/select-device",})
                     else:
@@ -415,34 +377,67 @@ def check_status(request, device_id):
                 return JsonResponse({"status": "updated", "count": device.challengeCount})
 
 def view_device(request):
-    if not request.session.get("is_verified"):
+    if not request.user.is_authenticated:
         return redirect("/")
 
-    devices = request.user.devices.all().order_by("-updatedAt")
+    devices = request.user.devices.all().annotate(
+        state_priority=Case(
+            When(state=State.SUSPENDED, then=0),
+            When(state=State.RECONNECTING, then=1),
+            When(state=State.CONNECTED, then=2),
+            default=3,
+        )
+    ).order_by("state_priority", "-updatedAt")
 
     if request.method == "POST":
         device_id = request.POST.get("device_id")
-        new_state = request.POST.get("state")
-        if device_id and new_state and new_state in (State.CONNECTED, State.RECONNECTING, State.SUSPENDED):
-            try:
-                device, _ = Device.objects.update_or_create(
-                    id=int(device_id),
-                    defaults={'state': new_state},
+        action = request.POST.get("action")
+        try:
+            device = Device.objects.get(id=int(device_id))
+            if action == "Reconnect":
+                device.state = State.RECONNECTING
+                device.save()
+                messages.success(request, f"Device {device.mac.upper()} set to {State.RECONNECTING}.")
+                
+            elif action == "Revoke":
+                if not device.certificate:
+                    messages.error(request, "Device has no certificate to revoke.")
+                    return redirect("view_device")
+
+                ca_response = requests.post(
+                    ca_revoke_url,
+                    json={"certificate": device.certificate, "reason": "user_revoked"},
+                    cert=(cert_file, key_file),
+                    verify=ca_file,
                 )
-                messages.success(request, f"Device {device.mac} set to {new_state}.")
-            except (ValueError, Device.DoesNotExist):
-                messages.error(request, "Invalid device or state.")
-        return redirect("view_device")
+
+                if ca_response.status_code == 200:
+                    device.certificate = ""
+                    device.challengeCount = 0
+                    device.state = State.REVOKED
+                    device.save()
+                    messages.success(request, f"Certificate for {device.mac} has been revoked.")
+                else:
+                    print("CA revoke error:", ca_response.status_code, ca_response.text)
+                    messages.error(request, f"Failed to revoke certificate: {ca_response.text}")
+
+            return redirect("view_device")
+        except (ValueError, Device.DoesNotExist):
+            messages.error(request, f"Could not find device.")
     
     return render(request, 'view-device.html', {'devices': devices, "state_choices": State.CHOICES})
 
 def reconnect_device(request, mac_address):
     print(mac_address)
     try:
-        _, _ = Device.objects.update_or_create(
-            mac=mac_address,
-            defaults={'state': State.CONNECTED})
+        device = Device.objects.get(mac=mac_address)
+        device.state = State.RECONNECTING
+        device.save()
     except Device.DoesNotExist:
         pass  # MAC not registered in RA
     
     return HttpResponse("Device Reconnected", status=200)
+
+def logout_view(request):
+    logout(request)
+    return redirect("index")

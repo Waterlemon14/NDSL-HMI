@@ -1,34 +1,79 @@
 {% extends "base-sidebar-full.html" %}
 
 {% block content %}
-  <h1 class="text-xl font-semibold mb-3 text-center">View Devices</h1>
-  <ol>
-    {% for device in devices %}
-    <li class="flex items-center justify-center gap-3 mb-2">
-      <span class="text-gray-500 font-medium">{{ forloop.counter }}.</span>
-      <span>MAC: {{ device.mac }}, IP: {{ device.ip }}, Manufacturer: {{ device.manufacturer }}</span>
-      <span class="inline-block px-2 py-0.5 rounded text-sm font-medium
-        {% if device.state == 'connected' %}bg-green-200 text-green-800
-        {% elif device.state == 'reconnecting' %}bg-yellow-200 text-yellow-800
-        {% elif device.state == 'suspended' %}bg-pink-200 text-pink-800
-        {% elif device.state == 'revoked' %}bg-red-200 text-red-800
-        {% endif %}">{{ device.get_state_display }}</span>
-      <form action="" method="POST" class="inline">
-        {% csrf_token %}
-        <input type="hidden" name="device_id" value="{{ device.id }}">
-        <input type="hidden" name="state" value="reconnecting">
-        <button type="submit" class="px-3 py-1 rounded bg-yellow-400 hover:bg-yellow-500 text-white font-medium">Reconnect</button>
-      </form>
-      {% if device.certificate %}
-      <form action="{% url 'revoke_cert' %}" method="POST" class="inline">
-        {% csrf_token %}
-        <input type="hidden" name="device_id" value="{{ device.id }}">
-        <button type="submit" class="px-3 py-1 rounded bg-red-600 hover:bg-red-700 text-white font-medium" onclick="return confirm('Revoke certificate for {{ device.mac }}?')">Revoke</button>
-      </form>
-      {% endif %}
-    </li>
-    {% endfor %}
-  </ol>
+  <h1 class="text-xl font-semibold mb-3 text-center">Your Devices</h1>
+  <div class="overflow-x-auto overflow-y-auto max-h-[550px] rounded-xl border border-gray-200 bg-white shadow-sm">
+    <table class="table-auto min-w-full">
+      <thead class="bg-gray-50 border-b-4 border-gray-300">
+        <tr>
+          <th scope="col" class="px-6 py-3 text-center uppercase tracking-wider">#</th>
+          <th scope="col" class="px-6 py-3 text-center uppercase tracking-wider">MAC</th>
+          <th scope="col" class="px-6 py-3 text-center uppercase tracking-wider">IP</th>
+          <th scope="col" class="px-6 py-3 text-center uppercase tracking-wider">Manufacturer</th>
+          <th scope="col" class="px-6 py-3 text-center uppercase tracking-wider">State</th>
+          <th scope="col" class="px-6 py-3 text-center uppercase tracking-wider">Actions</th>
+        </tr>
+      </thead>
+      <tbody class="divide-y divide-gray-200">
+        {% for device in devices %}
+        {% ifchanged device.state %}
+          {% if not forloop.first %} 
+            <tr class="border-b-4 bg-gray-300"> 
+              <td colspan="6"></td> 
+            </tr>
+          {% endif %}
+        {% endifchanged %}
+        <tr class="hover:bg-gray-50 transition-colors">
+          <th scope="row" class="text-center py-3 text-sm font-medium text-gray-900">{{ forloop.counter }}</th>
+          <td class="text-center py-3 whitespace-nowrap text-sm text-gray-900 font-mono uppercase">{{ device.mac }}</td>
+          <td class="text-center py-3 whitespace-nowrap text-sm text-gray-900 font-mono">{{ device.ip }}</td>
+          <td class="text-center py-3 whitespace-normal text-sm text-gray-900">{{ device.manufacturer }}</td>
+          <td class="text-center py-3 whitespace-normal text-sm">
+            <span class="px-2.5 py-1 rounded-full font-medium capitalize
+            {% if device.state == 'connected' %}bg-green-100 text-green-800
+            {% elif device.state == 'reconnecting' %}bg-yellow-100 text-yellow-800
+            {% elif device.state == 'suspended' %}bg-pink-100 text-pink-800
+            {% elif device.state == 'revoked' %}bg-red-100 text-red-800
+            {% endif %}">
+              {{ device.state }}
+            </span>
+          </td>
+          <td class="px-3 w-1">
+            <div class="flex justify-center items-center gap-x-3">
+            {% if device.state == "suspended" %}
+            <form action="" method="POST">
+              {% csrf_token %}
+              <input type="hidden" name="device_id" value="{{ device.id }}">      
+              <button type="submit" name="action" value="Reconnect" class="mt-1 mb-1 px-3 py-1.5 text-white font-semibold bg-green-500 rounded-xl hover:bg-green-700">Reconnect</button>
+            </form>
+            {% else %}
+            <button disabled type="submit" class="mt-1 mb-1 px-3 py-1.5 text-gray-500 font-semibold bg-gray-200 rounded-xl">Reconnect</button>
+            {% endif %}
+
+            {% if device.state != "revoked" %}
+            <form action="" method="POST">
+              {% csrf_token %}
+              <input type="hidden" name="device_id" value="{{ device.id }}">      
+              <button type="submit" name="action" value="Revoke" class="mt-1 mb-1 px-3 py-1.5 text-white font-semibold bg-red-500 rounded-xl hover:bg-red-700" onclick="return confirm('Revoke certificate for {{ device.mac }}?')">Revoke</button>
+            </form>
+            {% else %}
+            <button disabled type="submit" class="mt-1 mb-1 px-3 py-1.5 text-gray-500 font-semibold bg-gray-200 rounded-xl">Revoke</button>
+            {% endif %}
+            </div>
+
+          </td>
+        </tr>
+        {% empty %}
+          <tr>
+          <td colspan="6" class="px-6 py-5 text-center">            
+            <h3 class="mt-1 text-sm font-semibold text-gray-900">No devices found</h3>
+            <p class="mt-1 text-sm text-gray-500">Your devices will appear here once you have registered them to the network.</p>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
   {% if messages %}
     {% for message in messages %}
       {% if message.level == DEFAULT_MESSAGE_LEVELS.ERROR %}
