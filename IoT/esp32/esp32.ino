@@ -28,17 +28,17 @@
 // const char* ssid     = "test";
 // const char* password = "passtest";
 
-const char* ssid     = "Paella🥘";
-const char* password = "testpasstest";
+// const char* ssid     = "Paella🥘";
+// const char* password = "testpasstest";
 
-// const char* ssid     = "ndsgwifi";
-// const char* password = "H1b2idinF2@";
+const char* ssid     = "ndsgwifi";
+const char* password = "H1b2idinF2@";
 
 // Servers
-const char* serverUrl = "https://172.20.10.2:8443/data";
-const char* signUrl = "http://172.20.10.2:8000/receive-device-data/";
-const char* certDownloadUrl = "http://172.20.10.2:8000/download-cert/";
-const char* renewUrl = "http://172.20.10.2:8000/renew-cert/";
+const char* serverUrl = "https://10.147.36.131:8443/data";
+const char* signUrl = "http://10.147.36.131:8000/receive-device-data/";
+const char* certDownloadUrl = "http://10.147.36.131:8000/download-cert/";
+const char* renewUrl = "http://10.147.36.131:8000/renew-cert/";
 
 WiFiClientSecure client;
 HTTPClient https;
@@ -327,9 +327,6 @@ void setup() {
   }
   Serial.println("Connected to WiFi");
 
-  // 4. Sync Time for Cert Validation
-  setClock();
-
   // 5. Load root CA cert (needed for TLS to RA and data server)
   ca_cert_str = readFile("/root-ca.crt");
   if (ca_cert_str == "") {
@@ -351,6 +348,8 @@ void setup() {
     Serial.println("CRITICAL ERROR: Could not load certificate files!");
     while(1) delay(1000);
   }
+  // 4. Sync Time for Cert Validation
+  setClock();
 
   // 9. Apply Certs to Client
   client.setCACert(ca_cert_str.c_str());
