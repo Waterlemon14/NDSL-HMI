@@ -431,7 +431,7 @@ def reconnect_device(request, mac_address):
     print(mac_address)
     try:
         device = Device.objects.get(mac=mac_address)
-        device.state = State.CONNECTED
+        device.state = State.RECONNECTING
         device.save()
     except Device.DoesNotExist:
         pass  # MAC not registered in RA
