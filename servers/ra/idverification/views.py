@@ -271,6 +271,7 @@ def report_device(request):
             device = Device.objects.get(mac=mac)
             device.state = State.SUSPENDED
             device.save()
+            messages.error(request, f"Device {mac} was disconnected and marked as suspended.")
         except Device.DoesNotExist:
             pass  # MAC not registered in RA
     else: #elif anomaly == "stolen":
@@ -290,7 +291,8 @@ def report_device(request):
                 if ca_response.status_code == 200:
                     device.certificate = ""
                     device.save()
-                    print(f"Revoked certificate for reported device {mac}")
+                    print(f"Revoked certificate for reported stolen device {mac}")
+                    messages.error(request, f"Device {mac} has been stolen and its certificate has been revoked")
                 else:
                     print(f"CA revoke failed for {mac}: {ca_response.status_code} {ca_response.text}")
         except Device.DoesNotExist:
