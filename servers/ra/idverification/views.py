@@ -161,7 +161,7 @@ def receive_device_data(request):
 
         print("Device",device.id,"Challenge Count: ", device.challengeCount, "updatedAt: ", device.updatedAt)
 
-        if device.challengeCount == CHALLENGE_COUNT_THRESHOLD:
+        if device.challengeCount == CHALLENGE_COUNT_THRESHOLD or device.certificate:
             response.status_code = 202
         else:
             response.status_code = 201
@@ -307,6 +307,14 @@ def ownership_challenge(request, device_id):
         
     device = Device.objects.get(id=int(device_id))
 
+    if device.certificate:
+        previous_url = request.META.get('HTTP_REFERER')
+        
+        if previous_url:
+            return redirect(previous_url)
+        else:
+            return redirect("/")
+
     return render(request, "ownership-challenge.html", {"info": "Disconnect your device now", "device": device})
 
 def start_challenge(request, device_id):
@@ -360,11 +368,15 @@ def check_status(request, device_id):
                     device.save()
                     
                     if device.challengeCount == CHALLENGE_COUNT_THRESHOLD:
-                        messages.success(request, "Ownership challenge complete! Certificate now available for device with MAC address " + device.mac + ".")
+                        if device.state == State.REVOKED:
+                            redirect = "/view-device"
+                        else:
+                            redirect = "/select-device"
                         device.owner = request.user
                         device.state = State.RECONNECTING
                         device.save()
-                        return JsonResponse({"status": "complete", "count": device.challengeCount, "redirect": "/select-device",})
+                        messages.success(request, "Ownership challenge complete! Certificate now available for device with MAC address " + device.mac + ".")
+                        return JsonResponse({"status": "complete", "count": device.challengeCount, "redirect": redirect,})
                     else:
                         return JsonResponse({"status": "ok", "count": device.challengeCount})
                 
@@ -422,6 +434,21 @@ def view_device(request):
                 else:
                     print("CA revoke error:", ca_response.status_code, ca_response.text)
                     messages.error(request, f"Failed to revoke certificate: {ca_response.text}")
+            
+            elif action == "Re-issue":
+                if not device.state == State.REVOKED:
+                    msg = f"Device {device.mac} has not been revoked"
+                    if device.certificate:
+                        msg = msg + "and currently has a certificate."
+                    else:
+                        msg = msg + "."
+                    messages.error(request, msg)
+                elif device.certificate:
+                    messages.error(request, f"Device {device.mac} currently has a certificate.")
+                
+                else:
+                    return redirect("/ownership-challenge/" + device_id)
+
 
             return redirect("view_device")
         except (ValueError, Device.DoesNotExist):
