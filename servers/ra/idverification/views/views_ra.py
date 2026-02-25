@@ -222,6 +222,7 @@ def view_device(request):
         elif notification.level == Notification.INFO:
             messages.info(request, notification.message)
         notification.is_read = True
+        notification.save()
 
     if request.method == "POST":
         device_id = request.POST.get("device_id")
