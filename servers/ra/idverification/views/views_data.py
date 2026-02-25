@@ -6,7 +6,7 @@ from django.http import HttpResponse
 from django.views.decorators.csrf import csrf_exempt
 from django.contrib import messages
 
-from idverification.models import Device, State
+from idverification.models import Device, State, Notification
 
 basePathToRepo = Path(__file__).parent.parent.parent.parent.parent
 
@@ -36,7 +36,12 @@ def report_device(request):
             device = Device.objects.get(mac=mac)
             device.state = State.SUSPENDED
             device.save()
-            messages.error(request, f"Device {mac} was disconnected and marked as suspended.")
+            if device.owner:
+                Notification.objects.create(
+                    user=device.owner,
+                    level=Notification.ERROR,
+                    message=f"Device {mac} was disconnected and marked as suspended."
+                )
         except Device.DoesNotExist:
             pass  # MAC not registered in RA
     else: #elif anomaly == "stolen":
@@ -57,7 +62,12 @@ def report_device(request):
                     device.certificate = ""
                     device.save()
                     print(f"Revoked certificate for reported stolen device {mac}")
-                    messages.error(request, f"Device {mac} has been stolen and its certificate has been revoked")
+                    if device.owner:
+                        Notification.objects.create(
+                            user=device.owner,
+                            level=Notification.ERROR,
+                            message=f"Device {mac} has been stolen and its certificate has been revoked"
+                        )
                 else:
                     print(f"CA revoke failed for {mac}: {ca_response.status_code} {ca_response.text}")
         except Device.DoesNotExist:

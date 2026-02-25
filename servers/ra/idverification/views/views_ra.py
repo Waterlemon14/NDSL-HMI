@@ -15,7 +15,7 @@ from django.contrib.auth import login, logout
 from django.db.models import Case, When
 
 from idverification.mosip import otp_auth
-from idverification.models import Device, User, State
+from idverification.models import Device, User, State, Notification
 from idverification.helper import get_select_list
 
 basePathToRepo = Path(__file__).parent.parent.parent.parent.parent
@@ -209,6 +209,19 @@ def view_device(request):
             default=3,
         )
     ).order_by("state_priority", "-updatedAt")
+
+    notifications = Notification.objects.filter(user=request.user, is_read=False)
+
+    for notification in notifications:
+        if notification.level == Notification.ERROR:
+            messages.error(request, notification.message)
+        elif notification.level == Notification.SUCCESS:
+            messages.success(request, notification.message)
+        elif notification.level == Notification.WARNING:
+            messages.warning(request, notification.message)
+        elif notification.level == Notification.INFO:
+            messages.info(request, notification.message)
+        notification.is_read = True
 
     if request.method == "POST":
         device_id = request.POST.get("device_id")
