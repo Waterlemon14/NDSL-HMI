@@ -1,7 +1,8 @@
+import random
 from django.core.management.base import BaseCommand
 
 from idverification.factories import DeviceFactory
-from idverification.models import Device, User
+from idverification.models import Device, User, State
 
 class Command(BaseCommand):
     help = 'Uses DeviceFactory to fill the database with dummy IoT devices'
@@ -36,8 +37,10 @@ class Command(BaseCommand):
         if options["user"]:
             try:
                 user = User.objects.get(firstName=options["user"])
+                all_states = [choice[0] for choice in State.CHOICES]
                 for device in new_devices:
                     device.owner = user
+                    device.state = random.choice(all_states)
                     device.save()
                 self.stdout.write(self.style.SUCCESS(f"Assigned {options["total"]} devices to {options["user"]}"))
             except User.DoesNotExist:
