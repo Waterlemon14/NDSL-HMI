@@ -4,21 +4,22 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"crypto/tls"
 	"crypto/x509"
-	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log"
 	"net/http"
-	"time"
-
-	"errors"
 	"os"
 	"path"
+	"time"
 
-	_ "modernc.org/sqlite"
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/joho/godotenv"
 )
 
 type Payload struct {
@@ -49,6 +50,33 @@ func (s DeviceState) IsValid() bool {
 	default:
 		return false
 	}
+}
+
+// db is the connection pool to the Supabase Postgres database.
+var db *pgxpool.Pool
+
+// initDB connects to Postgres and ensures the received_data table exists.
+func initDB(databaseURL string) (*pgxpool.Pool, error) {
+	pool, err := pgxpool.New(context.Background(), databaseURL)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create connection pool: %w", err)
+	}
+	if err := pool.Ping(context.Background()); err != nil {
+		return nil, fmt.Errorf("failed to ping database: %w", err)
+	}
+	_, err = pool.Exec(context.Background(), `
+	CREATE TABLE IF NOT EXISTS received_data (
+		id SERIAL PRIMARY KEY,
+		mac TEXT,
+		temp TEXT,
+		client_timestamp TIMESTAMP,
+		created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+	)`)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create received_data table: %w", err)
+	}
+	log.Println("connected to database and ensured received_data table exists")
+	return pool, nil
 }
 
 func loadCertificate(basePath string) (tls.Certificate, error) {
@@ -97,19 +125,19 @@ func handlePing(w http.ResponseWriter, r *http.Request) {
 }
 
 func main() {
-	dataDB, err := initDB("data.db")
-	if err != nil {
-		log.Fatalf("DB init error: %v", err)
-		return
+	if err := godotenv.Load(); err != nil {
+		log.Printf("warning: could not load .env file: %v", err)
 	}
-	defer dataDB.Close()
 
-	raDB, err := sql.Open("sqlite", "../ra/db.sqlite3")
-	if err != nil {
-		log.Fatalf("RA DB open error: %v", err)
-		return
+	databaseURL := os.Getenv("DATABASE_URL")
+	if databaseURL == "" {
+		log.Fatal("DATABASE_URL environment variable is required")
 	}
-	defer raDB.Close()
+	db, err := initDB(databaseURL)
+	if err != nil {
+		log.Fatalf("Failed to initialize database: %v", err)
+	}
+	defer db.Close()
 
 	const BASE_PATH = "."
 
@@ -138,9 +166,7 @@ func main() {
 		IdleTimeout: 4 * time.Second,
 	}
 
-	http.HandleFunc("/data", func(w http.ResponseWriter, r *http.Request) {
-		dataHandler(w, r, dataDB, raDB)
-	})
+	http.HandleFunc("/data", dataHandler)
 	http.HandleFunc("/ping", handlePing)
 
 	err = server.ListenAndServeTLS("", "")
@@ -149,7 +175,7 @@ func main() {
 	}
 }
 
-func dataHandler(w http.ResponseWriter, r *http.Request, dataDB *sql.DB, raDB *sql.DB) {
+func dataHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "Only POST allowed", http.StatusMethodNotAllowed)
 		return
@@ -179,7 +205,7 @@ func dataHandler(w http.ResponseWriter, r *http.Request, dataDB *sql.DB, raDB *s
 
 	mac := p.MAC
 
-	deviceState, err := checkDeviceState(raDB, mac)
+	deviceState, err := checkDeviceState(mac)
 	if err != nil {
 		log.Printf("Checking device state error %s: %v", mac, err)
 		// http.Error(w, "Checking device state error", http.StatusConflict)
@@ -205,7 +231,7 @@ func dataHandler(w http.ResponseWriter, r *http.Request, dataDB *sql.DB, raDB *s
 		}
 
 	default:
-		if anomaly, err := isAnomaly(dataDB, mac); err != nil {
+		if anomaly, err := isAnomaly(mac); err != nil {
 			http.Error(w, "Database error", http.StatusInternalServerError)
 			return
 		} else if anomaly {
@@ -218,13 +244,10 @@ func dataHandler(w http.ResponseWriter, r *http.Request, dataDB *sql.DB, raDB *s
 
 	// Assume connected
 
-	// Insert into SQLite
-	_, err = dataDB.Exec(`
-		INSERT INTO received_data (mac, client_timestamp, temp) 
-		VALUES (?, ?, ?)`,
-		mac, p.Time, p.Temp,
-	)
-
+	// Insert into PostgreSQL
+	_, err = db.Exec(context.Background(),
+		"INSERT INTO received_data (mac, client_timestamp, temp) VALUES ($1, $2, $3)",
+		mac, p.Time, p.Temp)
 	if err != nil {
 		log.Printf("Database insert failed: %s", err)
 		// http.Error(w, "Database insert failed", http.StatusInternalServerError)
@@ -237,38 +260,10 @@ func dataHandler(w http.ResponseWriter, r *http.Request, dataDB *sql.DB, raDB *s
 
 }
 
-func initDB(path string) (*sql.DB, error) {
-	dataDB, err := sql.Open("sqlite", path)
-	if err != nil {
-		return nil, err
-	}
-
-	createTable := `
-	CREATE TABLE IF NOT EXISTS received_data (
-		id INTEGER PRIMARY KEY AUTOINCREMENT,
-		mac TEXT,
-		temp TEXT,
-		client_timestamp TIMESTAMP,
-		created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-	);
-	`
-	_, err = dataDB.Exec(createTable)
-	if err != nil {
-		return nil, err
-	}
-
-	return dataDB, nil
-}
-
-func checkDeviceState(raDB *sql.DB, mac string) (DeviceState, error) {
+func checkDeviceState(mac string) (DeviceState, error) {
 	var state string
-	err := raDB.QueryRow(`
-		SELECT state
-		FROM idverification_device
-		WHERE mac = ?
-		LIMIT 1`,
-		mac,
-	).Scan(&state)
+	err := db.QueryRow(context.Background(),
+		"SELECT state FROM idverification_device WHERE mac = $1 LIMIT 1", mac).Scan(&state)
 
 	log.Printf("state (%s)", state)
 
@@ -346,18 +341,13 @@ func suspendDevice(mac string) error {
 	return nil
 }
 
-func isAnomaly(dataDB *sql.DB, mac string) (bool, error) {
+func isAnomaly(mac string) (bool, error) {
 	var lastCreatedAt time.Time
-	err := dataDB.QueryRow(`
-		SELECT created_at
-		FROM received_data 
-		WHERE mac = ? 
-		ORDER BY created_at DESC 
-		LIMIT 1`,
-		mac,
-	).Scan(&lastCreatedAt)
+	err := db.QueryRow(context.Background(),
+		"SELECT created_at FROM received_data WHERE mac = $1 ORDER BY created_at DESC LIMIT 1",
+		mac).Scan(&lastCreatedAt)
 
-	if err == sql.ErrNoRows {
+	if err == pgx.ErrNoRows {
 		// First time seeing this MAC: no previous activity, so no anomaly
 		return false, nil
 	} else if err != nil {
@@ -368,10 +358,6 @@ func isAnomaly(dataDB *sql.DB, mac string) (bool, error) {
 
 	now := time.Now()
 	disconnectTime := lastCreatedAt.Add(10 * time.Second)
-	// log.Printf("Error: %s", lastCreatedAt)
-	// log.Printf("Error: %s", now)
-	// log.Printf("Error: %s", disconnectTime)
-	// log.Printf("Error: %t", now.After(disconnectTime))
 
 	return now.After(disconnectTime), nil
 }

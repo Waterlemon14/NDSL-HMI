@@ -47,24 +47,25 @@ type RevokeRequest struct {
 var db *pgxpool.Pool
 
 // initDB connects to Postgres and ensures the revoked_certificates table exists.
-func initDB(databaseURL string) *pgxpool.Pool {
+func initDB(databaseURL string) (*pgxpool.Pool, error) {
 	pool, err := pgxpool.New(context.Background(), databaseURL)
 	if err != nil {
-		log.Fatalf("failed to create connection pool: %v", err)
+		return nil, fmt.Errorf("failed to create connection pool: %w", err)
 	}
 	if err := pool.Ping(context.Background()); err != nil {
-		log.Fatalf("failed to ping database: %v", err)
+		return nil, fmt.Errorf("failed to ping database: %w", err)
 	}
-	_, err = pool.Exec(context.Background(), `CREATE TABLE IF NOT EXISTS revoked_certificates (
+	_, err = pool.Exec(context.Background(), `
+	CREATE TABLE IF NOT EXISTS revoked_certificates (
 		serial_number TEXT PRIMARY KEY,
 		revoked_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
 		reason        TEXT
 	)`)
 	if err != nil {
-		log.Fatalf("failed to create revoked_certificates table: %v", err)
+		return nil, fmt.Errorf("failed to create revoked_certificates table: %w", err)
 	}
 	log.Println("connected to database and ensured revoked_certificates table exists")
-	return pool
+	return pool, nil
 }
 
 type SubjectInfo struct {
@@ -96,7 +97,10 @@ func main() {
 	if databaseURL == "" {
 		log.Fatal("DATABASE_URL environment variable is required")
 	}
-	db = initDB(databaseURL)
+	db, err := initDB(databaseURL)
+	if err != nil {
+		log.Fatalf("failed to initialize database: %v", err)
+	}
 	defer db.Close()
 
 	caCert, caKey, err := loadCA(*caCertPath, *caKeyPath)
