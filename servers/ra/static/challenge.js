@@ -22,7 +22,7 @@ function startChallenge() {
         if (timer <= 0) {
           clearInterval(countdown);
         } else {
-          document.getElementById('info').innerText = `Keep your device disconnected (${timer}s remaining)`;
+          document.getElementById('info').innerText = `Keep your device disconnected (${timer}s remaining).`;
           document.getElementById('counter').innerText = `Challenge Counter: ${count}`;
         }
       }, 1000);
@@ -58,7 +58,7 @@ function endChallenge() {
 
         if (timer <= 0) {
           clearInterval(countdown);
-          document.getElementById('info').innerText = 'Device failed current test';
+          document.getElementById('info').innerText = 'Device failed current test. Disconnect your device now.';
           fetch(`/check-status/${deviceID}/`, {
             method: 'POST',
             headers: {
@@ -73,7 +73,7 @@ function endChallenge() {
             document.getElementById('start-challenge').style.visibility = 'visible';
           });
         } else {
-          document.getElementById('info').innerText = `Reconnect your device within ${timer} seconds`;
+          document.getElementById('info').innerText = `Reconnect your device within ${timer} seconds.`;
         }
 
         fetch(`/check-status/${deviceID}/`, {
@@ -104,7 +104,7 @@ function endChallenge() {
       }, 1000);
     } else {
       console.error("Failed disconnect");
-      document.getElementById('info').innerText = 'Device failed current test';
+      document.getElementById('info').innerText = 'Device failed current test. Disconnect your device now.';
       document.getElementById('counter').innerText = `Challenge Counter: ${count}`;
       document.getElementById('start-challenge').style.visibility = 'visible';
     }
