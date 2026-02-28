@@ -28,7 +28,7 @@ class Device(models.Model):
     csr = models.TextField(blank=True, null=True)
     
     challengeCount = models.SmallIntegerField(default=0)
-    interval = models.SmallIntegerField(default=1000000)
+    interval = models.SmallIntegerField(default=10000)
 
     certificate = models.TextField(blank=True, null=True)
 
