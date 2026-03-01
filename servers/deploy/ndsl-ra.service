@@ -1,0 +1,15 @@
+[Unit]
+Description=NDSL RA Server (Django/Gunicorn)
+After=network.target ndsl-ca.service
+
+[Service]
+Type=simple
+User=ndsl
+WorkingDirectory=/opt/ndsl-hmi/servers/ra
+EnvironmentFile=/opt/ndsl-hmi/servers/ra/.env
+ExecStart=/opt/ndsl-hmi/servers/ra/venv/bin/gunicorn verification.wsgi:application -c gunicorn_config.py
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
