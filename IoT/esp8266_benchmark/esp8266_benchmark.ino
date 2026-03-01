@@ -34,25 +34,11 @@ HTTPClient http;
 IPAddress ip;
 
 bool benchmarkDone = false;
+unsigned long results[BENCHMARK_ITERATIONS];
 
 // ─── RNG Implementation ────────────────────────────────────────
 static int RNG(uint8_t* dest, unsigned size) {
-  while (size) {
-    uint8_t val = 0;
-    for (unsigned i = 0; i < 8; ++i) {
-      int init = analogRead(0);
-      int count = 0;
-      while (analogRead(0) == init) {
-        ++count;
-        yield();
-      }
-      if (count == 0) val = (val << 1) | (init & 0x01);
-      else val = (val << 1) | (count & 0x01);
-    }
-    *dest = val;
-    ++dest;
-    --size;
-  }
+  os_get_random(dest, size);
   return 1;
 }
 
@@ -73,7 +59,6 @@ void printResults(const char* label, unsigned long results[], int count) {
 
 // ─── Benchmark 1: ECC Key Generation (uECC) ─────────────────────
 void benchmarkKeyGeneration() {
-  unsigned long results[BENCHMARK_ITERATIONS];
   Serial.println("Running Key Generation benchmark...");
 
   for (int i = 0; i < BENCHMARK_ITERATIONS; i++) {
@@ -84,17 +69,17 @@ void benchmarkKeyGeneration() {
     const struct uECC_Curve_t* curve = uECC_secp256r1();
     unsigned long start = millis();
     uECC_make_key(temp_pk, temp_sk, curve);
-    
     results[i] = millis() - start;
+
     Serial.printf("  Iteration %d: %lu ms\n", i + 1, results[i]);
-    yield(); 
+    
+    delay(10);
   }
   printResults("Key Generation (uECC)", results, BENCHMARK_ITERATIONS);
 }
 
 // ─── Benchmark 2: TLS Handshake (BearSSL) ───────────────────────
 void benchmarkTLSHandshake() {
-  unsigned long results[BENCHMARK_ITERATIONS];
   Serial.println("Running TLS Handshake benchmark...");
 
   for (int i = 0; i < BENCHMARK_ITERATIONS; i++) {
@@ -117,7 +102,6 @@ void benchmarkTLSHandshake() {
 
 // ─── Benchmark 3: Data Send Roundtrip (JSON + POST) ──────────────
 void benchmarkDataSend() {
-  unsigned long results[BENCHMARK_ITERATIONS];
   Serial.println("Running Data Send Roundtrip benchmark...");
 
   for (int i = 0; i < BENCHMARK_ITERATIONS; i++) {
