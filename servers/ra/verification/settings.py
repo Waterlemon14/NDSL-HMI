@@ -30,6 +30,7 @@ ALLOWED_HOSTS = [
     'localhost',
     '127.0.0.1',
     '172.20.10.2',
+    '192.168.0.212',
 ]
 
 # Add EC2 public IP if set
@@ -93,7 +94,11 @@ DATABASES = {
         'PORT': os.environ.get('DB_PORT', '6543'),
         'OPTIONS': {
             'sslmode': 'require',
+            'connect_timeout': 5,
         },
+        'CONN_MAX_AGE': 600,
+        'CONN_HEALTH_CHECKS': True,
+        'DISABLE_SERVER_SIDE_CURSORS': True,
     }
 }
 
