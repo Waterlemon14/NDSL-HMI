@@ -1,18 +1,51 @@
+import random
 from django.core.management.base import BaseCommand
 
 from idverification.factories import DeviceFactory
-from idverification.models import Device
+from idverification.models import Device, User, State
 
 class Command(BaseCommand):
     help = 'Uses DeviceFactory to fill the database with dummy IoT devices'
 
-    def handle(self, *args, **kwargs):
-        self.stdout.write("Clearing old devices...")
-        Device.objects.all().delete()
+    def add_arguments(self, parser):
+        # Named (optional) arguments
+        parser.add_argument(
+            "--clear",
+            action="store_true",
+            help="Clear old devices before seeding"
+        )
+        parser.add_argument(
+            '--total',
+            type=int,
+            default=10,
+            help='Number of devices to create (default is 10)',
+        )
+        parser.add_argument(
+            "--user",
+            type=str,
+            help="Attach devices to the given user first name"
+        )
 
-        self.stdout.write("Creating 10 new devices...")
-        DeviceFactory.create_batch(10)
+    def handle(self, *args, **options):
+        if options["clear"]:
+            self.stdout.write("Clearing old devices...")
+            Device.objects.all().delete()
+        
+        self.stdout.write(f"Creating {options["total"]} new devices...")
+        new_devices = DeviceFactory.create_batch(options["total"])
+
+        if options["user"]:
+            try:
+                user = User.objects.get(firstName=options["user"])
+                all_states = [choice[0] for choice in State.CHOICES]
+                for device in new_devices:
+                    device.owner = user
+                    device.state = random.choice(all_states)
+                    device.save()
+                self.stdout.write(self.style.SUCCESS(f"Assigned {options["total"]} devices to {options["user"]}"))
+            except User.DoesNotExist:
+                self.stdout.write(self.style.WARNING(f"User {options["user"]} not found. Devices left unassigned."))
 
         self.stdout.write(
-            self.style.SUCCESS(f'Successfully seeded 10 devices!')
+            self.style.SUCCESS(f'Successfully seeded {options["total"]} devices!')
         )

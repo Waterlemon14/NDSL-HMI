@@ -17,7 +17,6 @@ import (
 	"path"
 	"time"
 
-	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/joho/godotenv"
 )
@@ -56,27 +55,28 @@ func (s DeviceState) IsValid() bool {
 var db *pgxpool.Pool
 
 // initDB connects to Postgres and ensures the received_data table exists.
-func initDB(databaseURL string) (*pgxpool.Pool, error) {
+func initDB(databaseURL string) error {
 	pool, err := pgxpool.New(context.Background(), databaseURL)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create connection pool: %w", err)
+		return fmt.Errorf("failed to create connection pool: %w", err)
 	}
 	if err := pool.Ping(context.Background()); err != nil {
-		return nil, fmt.Errorf("failed to ping database: %w", err)
+		return fmt.Errorf("failed to ping database: %w", err)
 	}
 	_, err = pool.Exec(context.Background(), `
 	CREATE TABLE IF NOT EXISTS received_data (
 		id SERIAL PRIMARY KEY,
 		mac TEXT,
-		temp TEXT,
+		temp DOUBLE PRECISION,
 		client_timestamp TIMESTAMP,
 		created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 	)`)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create received_data table: %w", err)
+		return fmt.Errorf("failed to create received_data table: %w", err)
 	}
 	log.Println("connected to database and ensured received_data table exists")
-	return pool, nil
+	db = pool
+	return nil
 }
 
 func loadCertificate(basePath string) (tls.Certificate, error) {
@@ -133,7 +133,8 @@ func main() {
 	if databaseURL == "" {
 		log.Fatal("DATABASE_URL environment variable is required")
 	}
-	db, err := initDB(databaseURL)
+	var err error
+	err = initDB(databaseURL)
 	if err != nil {
 		log.Fatalf("Failed to initialize database: %v", err)
 	}
@@ -347,13 +348,10 @@ func isAnomaly(mac string) (bool, error) {
 		"SELECT created_at FROM received_data WHERE mac = $1 ORDER BY created_at DESC LIMIT 1",
 		mac).Scan(&lastCreatedAt)
 
-	if err == pgx.ErrNoRows {
+	if err != nil {
 		// First time seeing this MAC: no previous activity, so no anomaly
-		return false, nil
-	} else if err != nil {
-		log.Printf("Error: %v", err)
 		// http.Error(w, "Server Database error", http.StatusInternalServerError)
-		return false, err
+		return false, nil
 	}
 
 	now := time.Now()

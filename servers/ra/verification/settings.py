@@ -22,7 +22,6 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/5.2/howto/deployment/checklist/
-
 SECRET_KEY = os.environ.get('DJANGO_SECRET_KEY', 'django-insecure-*=m@#j+7-kyz!w15_zot@-tkqlgtg(y-lvzny6mf=-!!9ck((%')
 
 DEBUG = os.environ.get('DJANGO_DEBUG', 'True') == 'True'
@@ -30,13 +29,7 @@ DEBUG = os.environ.get('DJANGO_DEBUG', 'True') == 'True'
 ALLOWED_HOSTS = [
     'localhost',
     '127.0.0.1',
-    '192.168.0.212',
-    '172.19.83.216',
-    '192.168.56.1',
-    '10.141.173.223',
-    '192.168.124.240',
     '172.20.10.2',
-    '10.147.36.131',
 ]
 
 # Add EC2 public IP if set

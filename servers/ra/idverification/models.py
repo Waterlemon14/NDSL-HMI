@@ -28,7 +28,7 @@ class Device(models.Model):
     csr = models.TextField(blank=True, null=True)
     
     challengeCount = models.SmallIntegerField(default=0)
-    interval = models.SmallIntegerField(default=1000000)
+    interval = models.SmallIntegerField(default=10000)
 
     certificate = models.TextField(blank=True, null=True)
 
@@ -93,3 +93,29 @@ class User(AbstractBaseUser):
     def get_full_name(self):
         full_name = f"{self.firstName} {self.lastName}"
         return full_name.strip()
+
+class Notification(models.Model):
+    SUCCESS = 'success'
+    INFO = 'info'
+    WARNING = 'warning'
+    ERROR = 'error'
+
+    LEVEL_CHOICES = [
+        (SUCCESS, 'Success'),
+        (INFO, 'Info'),
+        (WARNING, 'Warning'),
+        (ERROR, 'Error'),
+    ]
+
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
+    message = models.TextField()
+    level = models.CharField(
+        max_length=10, 
+        choices=LEVEL_CHOICES, 
+        default=INFO
+    )
+    is_read = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-created_at']
