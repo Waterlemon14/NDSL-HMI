@@ -6,7 +6,7 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('idverification', '0004_alter_device_state'),
+        ('idverification', '0005_notification'),
     ]
 
     operations = [
