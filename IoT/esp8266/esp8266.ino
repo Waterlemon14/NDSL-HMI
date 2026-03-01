@@ -65,7 +65,7 @@ void setup() {
   // Remove previously generated keys and cert
   // LittleFS.remove("/private.key");
   // LittleFS.remove("/public.key");
-  // LittleFS.remove("/client.crt");
+  LittleFS.remove("/client.crt");
   
   // Check for generated key pair & certificate
   if (LittleFS.exists("/private.key") && LittleFS.exists("/public.key")) {
@@ -125,16 +125,6 @@ void setup() {
   Serial.println(ip);
   Serial.print("MAC address: ");
   Serial.println(WiFi.macAddress());
-
-  // Connect to RA
-  if (client.connect(host, idport)) {
-    Serial.println("Connected to id server");
-  } else {
-    Serial.println("Failed to connect to id server");
-    uint8_t state = client.status(); 
-    Serial.print("Connection failed. TCP State: ");
-    Serial.println(state);
-  }
 
   // Check for certificate, request if not present
   if (!LittleFS.exists("/client.crt")){
@@ -236,6 +226,7 @@ void setup() {
     // deviceKey = new BearSSL::PrivateKey(sk, 32);
     unsigned allowed_usages = BR_KEYTYPE_KEYX | BR_KEYTYPE_SIGN;
     unsigned cert_issuer_key_type = BR_KEYTYPE_RSA;
+    secureclient.setBufferSizes(1024, 1024);
     secureclient.setTrustAnchors(trustRoot);
     secureclient.setClientECCert(clientCertList, deviceKey, allowed_usages, cert_issuer_key_type);
 
@@ -257,50 +248,37 @@ void setup() {
 void loop() {
   // put your main code here, to run repeatedly:
   if (WiFi.status() == WL_CONNECTED) {
-    secureclient.setBufferSizes(1024, 1024);
-    if (secureclient.connect(host, commsport)) {
-      Serial.println("Connected to data server");
-      secureclient.setInsecure();
+    HTTPClient http;
+    if (http.begin(secureclient, data_server)) {
+      http.addHeader("Content-Type", "application/json");
 
-      HTTPClient http;
-      if (http.begin(secureclient, data_server)) {
-        http.addHeader("Content-Type", "application/json");
+      StaticJsonDocument<200> doc;
+      time_t now = time(nullptr);
+      struct tm* timeinfo = localtime(&now);
+      char buffer[20]; 
+      strftime(buffer, sizeof(buffer), "%Y-%m-%d %H:%M:%S", timeinfo);
+      int temp = random(15, 21);
+      doc["temp"] = temp;
+      doc["time"] = buffer;
+      doc["MAC"] = WiFi.macAddress();
+      
+      String data;
+      serializeJson(doc, data);
 
-        StaticJsonDocument<200> doc;
-        time_t now = time(nullptr);
-        struct tm* timeinfo = localtime(&now);
-        char buffer[20]; 
-        strftime(buffer, sizeof(buffer), "%Y-%m-%d %H:%M:%S", timeinfo);
-        int temp = random(15, 21);
-        doc["temp"] = temp;
-        doc["time"] = buffer;
-        doc["MAC"] = WiFi.macAddress();
-        
-        String data;
-        serializeJson(doc, data);
+      int httpResponseCode = http.POST(data);
 
-        int httpResponseCode = http.POST(data);
-
-        if (httpResponseCode > 0) {
-          String response = http.getString();
-          Serial.println(httpResponseCode);
-          Serial.println(response);
-        } else {
-          Serial.print("Error on sending POST: ");
-          Serial.println(http.errorToString(httpResponseCode).c_str());
-        }
-
-        http.end();
+      if (httpResponseCode > 0) {
+        String response = http.getString();
+        Serial.println(httpResponseCode);
+        Serial.println(response);
       } else {
-        Serial.println("Http connection failed!");
+        Serial.print("Error on sending POST: ");
+        Serial.println(http.errorToString(httpResponseCode).c_str());
       }
 
-      secureclient.stop();
-      Serial.println("\nConnection closed");
+      http.end();
     } else {
-      Serial.print("Connection failed! ");
-      int errCode = secureclient.getLastSSLError();
-      Serial.printf("mTLS Error: %d\n", errCode);
+      Serial.println("Http connection failed!");
     }
     delay(10);
   } else {
