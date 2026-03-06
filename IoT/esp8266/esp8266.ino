@@ -143,15 +143,18 @@ void setup() {
     serializeJson(doc, jsonPayload);
 
     int responsecode = 0;
-    http.begin(client, server, idport, "/receive-device-data/");
     while (responsecode != 202){
-      Serial.println("Sending device data...");
-      http.addHeader("Content-Type", "application/json");
-      responsecode = http.POST(jsonPayload);
-      Serial.println(responsecode);
+      if(http.begin(client, server, idport, "/receive-device-data/")){
+        Serial.println("Sending device data...");
+        http.addHeader("Content-Type", "application/json");
+        responsecode = http.POST(jsonPayload);
+        Serial.println(responsecode);
+        http.end();
+      } else{
+        Serial.println("Http connection failed!");
+      }
       delay(10000);
     }
-    http.end();
 
     responsecode = 0;
     while (responsecode != 200){
