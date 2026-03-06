@@ -1,0 +1,15 @@
+[Unit]
+Description=NDSL CA Server
+After=network.target
+
+[Service]
+Type=simple
+User=ndsl
+WorkingDirectory=/opt/ndsl-hmi/servers/ca
+ExecStart=/opt/ndsl-hmi/servers/ca/ca-server
+Restart=on-failure
+RestartSec=5
+EnvironmentFile=/opt/ndsl-hmi/servers/ca/.env
+
+[Install]
+WantedBy=multi-user.target

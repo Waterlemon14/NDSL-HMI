@@ -7,6 +7,7 @@
 *.dll
 *.so
 *.dylib
+.git
 
 # Test binary, built with `go test -c`
 *.test
@@ -69,4 +70,5 @@ servers/ra/__pycache__
 servers/ra/lib
 servers/ra/share
 servers/ra/pyvenv.cfg
-servers/ra/staticfiles
+
+servers/ra/staticfiles/
