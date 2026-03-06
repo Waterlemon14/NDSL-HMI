@@ -15,7 +15,7 @@ const char* data_url    = "https://192.168.0.212:8443/data";
 const int idport       = 8000;
 const int commsport    = 8443;
 
-const int BENCHMARK_ITERATIONS = 2;
+const int BENCHMARK_ITERATIONS = 10000;
 
 // ─── Globals ─────────────────────────────────────────────────────
 uint8_t sk[32];
@@ -34,27 +34,34 @@ HTTPClient http;
 IPAddress ip;
 
 bool benchmarkDone = false;
-unsigned long results[BENCHMARK_ITERATIONS];
 
 // ─── RNG Implementation ────────────────────────────────────────
 static int RNG(uint8_t* dest, unsigned size) {
-  os_get_random(dest, size);
-  return 1;
-}
+  // Use the least-significant bits from the ADC for an unconnected pin (or connected to a source of
+  // random noise). This can take a long time to generate random data if the result of analogRead(0)
+  // doesn't change very frequently.
+  while (size) {
+    uint8_t val = 0;
+    for (unsigned i = 0; i < 8; ++i) {
+      int init = analogRead(0);
+      int count = 0;
+      while (analogRead(0) == init) {
+        ++count;
+        yield();
+      }
 
-// ─── Benchmark Helpers ───────────────────────────────────────────
-void printResults(const char* label, unsigned long results[], int count) {
-  unsigned long minVal = results[0];
-  unsigned long maxVal = results[0];
-  unsigned long sum = 0;
-
-  for (int i = 0; i < count; i++) {
-    if (results[i] < minVal) minVal = results[i];
-    if (results[i] > maxVal) maxVal = results[i];
-    sum += results[i];
+      if (count == 0) {
+        val = (val << 1) | (init & 0x01);
+      } else {
+        val = (val << 1) | (count & 0x01);
+      }
+    }
+    *dest = val;
+    ++dest;
+    --size;
   }
-  Serial.printf("\n[%s] (%d iterations)\n", label, count);
-  Serial.printf("  Min: %lu ms | Max: %lu ms | Avg: %lu ms\n\n", minVal, maxVal, sum / count);
+  // NOTE: it would be a good idea to hash the resulting random data using SHA-256 or similar.
+  return 1;
 }
 
 // ─── Benchmark 1: ECC Key Generation (uECC) ─────────────────────
@@ -69,13 +76,14 @@ void benchmarkKeyGeneration() {
     const struct uECC_Curve_t* curve = uECC_secp256r1();
     unsigned long start = millis();
     uECC_make_key(temp_pk, temp_sk, curve);
-    results[i] = millis() - start;
+    unsigned long elapsed = millis() - start;
 
-    Serial.printf("  Iteration %d: %lu ms\n", i + 1, results[i]);
+    Serial.printf("  Iteration %d: %lu ms\n", i + 1, elapsed);
     
     delay(10);
   }
-  printResults("Key Generation (uECC)", results, BENCHMARK_ITERATIONS);
+
+  Serial.printf ("Key Generation (uECC) test with %d iterations complete.\n", BENCHMARK_ITERATIONS);
 }
 
 // ─── Benchmark 2: TLS Handshake (BearSSL) ───────────────────────
@@ -88,16 +96,14 @@ void benchmarkTLSHandshake() {
     unsigned long elapsed = millis() - start;
 
     if (connected) {
-      results[i] = elapsed;
       Serial.printf("  Iteration %d: %lu ms\n", i + 1, elapsed);
       secureclient.stop();
     } else {
-      results[i] = elapsed;
       Serial.printf("  Iteration %d: FAILED\n", i + 1);
     }
     delay(500); // Allow sockets to clean up
   }
-  printResults("TLS Handshake (BearSSL)", results, BENCHMARK_ITERATIONS);
+  Serial.printf ("TLS Handshake (BearSSL) test with %d iterations complete.\n", BENCHMARK_ITERATIONS);
 }
 
 // ─── Benchmark 3: Data Send Roundtrip (JSON + POST) ──────────────
@@ -119,20 +125,20 @@ void benchmarkDataSend() {
       unsigned long start = millis();
       int httpCode = http.POST(data);
       String response = http.getString();
-      results[i] = millis() - start;
+      unsigned long elapsed = millis() - start;
       
       if (httpCode > 0) {
-        Serial.printf("  Iteration %d: %lu ms (HTTP %d)\n", i + 1, results[i], httpCode);
+        Serial.printf("  Iteration %d: %lu ms (HTTP %d)\n", i + 1, elapsed, httpCode);
       } else {
-        Serial.printf("  Iteration %d: %lu ms (Error: %s)\n", i + 1, results[i],
+        Serial.printf("  Iteration %d: %lu ms (Error: %s)\n", i + 1, elapsed,
                       http.errorToString(httpCode).c_str());
       }
       http.end();
       secureclient.stop();
     }
-    delay(200);
+    delay(10);
   }
-  printResults("Data Send Roundtrip", results, BENCHMARK_ITERATIONS);
+  Serial.printf ("Data Send Roundtrip test with %d iterations complete.\n", BENCHMARK_ITERATIONS);
 }
 
 // ─── Setup (Initialization logic preserved) ──────────────────────
@@ -300,7 +306,7 @@ void setup() {
 void loop() {
   if (benchmarkDone) return;
 
-  Serial.println("\n===== ESP8266 BENCHMARK START =====");
+  Serial.println("\n===== BENCHMARK START =====");
   benchmarkKeyGeneration();
   benchmarkTLSHandshake();
   benchmarkDataSend();
