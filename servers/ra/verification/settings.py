@@ -22,22 +22,23 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/5.2/howto/deployment/checklist/
+SECRET_KEY = os.environ.get('DJANGO_SECRET_KEY', 'django-insecure-*=m@#j+7-kyz!w15_zot@-tkqlgtg(y-lvzny6mf=-!!9ck((%')
 
-# SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = 'django-insecure-*=m@#j+7-kyz!w15_zot@-tkqlgtg(y-lvzny6mf=-!!9ck((%'
+DEBUG = os.environ.get('DJANGO_DEBUG', 'True') == 'True'
+# DEBUG = False
 
-# SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
+ALLOWED_HOSTS = [
+    'localhost',
+    '127.0.0.1',
+    '172.20.10.2',
+    '192.168.0.212',
+]
 
-ALLOWED_HOSTS = ['192.168.0.212',
-                 '172.19.83.216',
-                 '192.168.56.1', 
-                 '10.141.173.223', 
-                 'localhost', 
-                 '192.168.124.240', 
-                 '172.20.10.2', 
-                 '10.147.36.131',
-                ]
+# Add EC2 public IP if set
+if os.environ.get('EC2_PUBLIC_IP'):
+    ALLOWED_HOSTS.append(os.environ['EC2_PUBLIC_IP'])
+if os.environ.get('EC2_DOMAIN'):
+    ALLOWED_HOSTS.append(os.environ['EC2_DOMAIN'])
 
 # Application definition
 
@@ -53,6 +54,7 @@ INSTALLED_APPS = [
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
+    'whitenoise.middleware.WhiteNoiseMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
@@ -94,7 +96,11 @@ DATABASES = {
         'PORT': os.environ.get('DB_PORT', '6543'),
         'OPTIONS': {
             'sslmode': 'require',
+            'connect_timeout': 5,
         },
+        'CONN_MAX_AGE': 600,
+        'CONN_HEALTH_CHECKS': True,
+        'DISABLE_SERVER_SIDE_CURSORS': True,
     }
 }
 
@@ -155,3 +161,17 @@ CSRF_TRUSTED_ORIGINS = [
     'https://127.0.0.1:8443',
     'https://localhost:8443',
 ]
+
+# Add EC2 origin if set
+if os.environ.get('EC2_PUBLIC_IP'):
+    CSRF_TRUSTED_ORIGINS.append(f"https://{os.environ['EC2_PUBLIC_IP']}:8000")
+    CSRF_TRUSTED_ORIGINS.append(f"https://{os.environ['EC2_PUBLIC_IP']}:8443")
+
+# Production security settings
+if not DEBUG:
+    SECURE_HSTS_SECONDS = 31536000
+    SECURE_SSL_REDIRECT = True
+    SECURE_HSTS_PRELOAD = True
+    SECURE_HSTS_INCLUDE_SUBDOMAINS = True
+    SESSION_COOKIE_SECURE = True
+    CSRF_COOKIE_SECURE = True

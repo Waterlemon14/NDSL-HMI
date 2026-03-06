@@ -265,15 +265,6 @@ void benchmarkTLSHandshake() {
   static unsigned long results[BENCHMARK_ITERATIONS];
   Serial.println("\nRunning TLS Handshake benchmark...");
 
-  // Parse host and port from serverUrl
-  // serverUrl = "https://172.20.10.2:8443/data"
-  // String urlStr = String(serverUrl);
-  // int hostStart = urlStr.indexOf("://") + 3;
-  // int portStart = urlStr.indexOf(":", hostStart) + 1;
-  // int portEnd   = urlStr.indexOf("/", portStart);
-  // String host   = urlStr.substring(hostStart, portStart - 1);
-  // int port      = urlStr.substring(portStart, portEnd).toInt();
-
   IPAddress host(172,20,10,2);
   int port = 8443;
 
@@ -300,7 +291,7 @@ void benchmarkTLSHandshake() {
     tlsClient.stop();
     delay(100);  // brief pause between handshakes
   }
-
+  
   printResults("TLS Handshake", results, BENCHMARK_ITERATIONS);
 }
 
@@ -342,7 +333,7 @@ void benchmarkRenewal() {
     renewHttp.end();
     delay(100);
   }
-
+  
   printResults("Certificate Renewal", results, BENCHMARK_ITERATIONS);
 
   // Save the latest renewed cert to SPIFFS so mTLS still works

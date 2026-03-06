@@ -1,39 +1,72 @@
 #!/usr/bin/env python3
-"""Capture ESP32 benchmark results from Serial and save to results.txt."""
+"""Capture benchmark results from Serial and save to results.txt."""
 
 import sys
 import os
 import glob
 import serial
 
+import serial.tools.list_ports
+import argparse
+
 BAUD_RATE = 115200
-START_MARKER = "===== ESP32 BENCHMARK RESULTS ====="
+START_MARKER = "===== BENCHMARK START ====="
 END_MARKER = "===== BENCHMARK COMPLETE ====="
 
 
 def find_serial_port():
-    """Auto-detect the ESP32 serial port on macOS."""
+    """Auto-detect serial port of microcontroller."""
     patterns = ["/dev/cu.usbserial-*", "/dev/cu.SLAB_USBtoUART*", "/dev/cu.wchusbserial-*"]
     for pattern in patterns:
         ports = glob.glob(pattern)
         if ports:
             return ports[0]
+          
+    target_keywords = ["USB", "UART", "CP210", "CH340", "FT232"]
+    ports = serial.tools.list_ports.comports()
+
+    for port in ports:
+        for keyword in target_keywords:
+            if keyword.lower() in port.description.lower():
+                return port.device
+              
     return None
 
 
 def main():
-    if len(sys.argv) > 1:
-        port = sys.argv[1]
-    else:
-        port = find_serial_port()
-        if port is None:
-            print("Error: No ESP32 serial port detected.")
-            print("Usage: python serial_capture.py [/dev/cu.usbserial-XXXX]")
-            sys.exit(1)
+    parser = argparse.ArgumentParser(description="NDSL-HMI Testing Serial Port Capture Tool")
+
+    parser.add_argument(
+        "device", 
+        type=str, 
+        choices=["esp32", "esp8266", "pico"],
+        help="The type of microcontroller you are testing."
+    )
+
+    parser.add_argument(
+        "-p",
+        "--port",
+        type=str,
+        help="The serial port of the microcontroller"
+    )
+
+    args = parser.parse_args()
+
+    port = args.port or find_serial_port()
+    device = args.device
+
+    if not port:
+        print("Error: No serial port detected.")
+        sys.exit(1)
 
     print(f"Connecting to {port} at {BAUD_RATE} baud...")
     try:
         ser = serial.Serial(port, BAUD_RATE, timeout=1)
+
+        if device == "esp8266":
+            ser.setDTR(False)
+            ser.setRTS(False)
+        
     except serial.SerialException as e:
         print(f"Error opening serial port: {e}")
         sys.exit(1)
@@ -53,21 +86,23 @@ def main():
 
             if START_MARKER in line:
                 capturing = True
-                captured_lines = [line]
                 continue
 
             if capturing:
-                captured_lines.append(line)
                 if END_MARKER in line:
                     break
+                if "," in line:
+                    captured_lines.append(line)
+
     except KeyboardInterrupt:
         print("\nAborted by user.")
     finally:
         ser.close()
 
     if captured_lines:
-        out_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "results.txt")
+        out_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), f"results_{device}.csv")
         with open(out_path, "w") as f:
+            f.write("TestType,Iteration,Elapsed_ms,Result\n")
             f.write("\n".join(captured_lines) + "\n")
         print(f"\nResults saved to {out_path}")
     else:
