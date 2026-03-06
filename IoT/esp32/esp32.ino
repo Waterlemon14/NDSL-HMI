@@ -277,7 +277,7 @@ void renewCertificate() {
     String newCert = https.getString();
     writeFile("/client.crt", newCert.c_str());
     client_cert_str = newCert;
-    client.setCertificate(client_cert_str.c_str());
+    mTLSclient.setCertificate(client_cert_str.c_str());
     Serial.println("Certificate renewed successfully");
   } else {
     Serial.printf("Certificate renewal failed: %d\n", httpCode);
@@ -351,9 +351,9 @@ void setup() {
   }
 
   // 9. Apply Certs to Client
-  client.setCACert(ca_cert_str.c_str());
-  client.setCertificate(client_cert_str.c_str());
-  client.setPrivateKey(client_key_str.c_str());
+  mTLSclient.setCACert(ca_cert_str.c_str());
+  mTLSclient.setCertificate(client_cert_str.c_str());
+  mTLSclient.setPrivateKey(client_key_str.c_str());
 
   if (WiFi.status() == WL_CONNECTED) {
     WiFiClient client;
