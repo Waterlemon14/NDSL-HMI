@@ -472,7 +472,7 @@ void loop() {
     return;
   }
 
-  Serial.println("\n===== ESP32 BENCHMARK RESULTS =====");
+  Serial.println("\n===== BENCHMARK START =====");
   Serial.printf("WiFi RSSI: %d dBm\n", WiFi.RSSI());
   Serial.printf("Free Heap: %u bytes\n", ESP.getFreeHeap());
 
