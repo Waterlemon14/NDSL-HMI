@@ -1,5 +1,5 @@
-#define NORMALOP 0
-#define RESET 1
+#define NORMALOP  0
+#define RESET     1
 
 // Network
 #include <WiFi.h>
@@ -15,7 +15,7 @@
 // Synchronization
 #include <time.h>
 
-// Security packages
+// Security packages 
 #include "mbedtls/pk.h"
 #include "mbedtls/x509_csr.h"
 #include "mbedtls/entropy.h"
@@ -28,19 +28,19 @@
 // const char* ssid     = "test";
 // const char* password = "passtest";
 
-const char* ssid = "Paella🥘";
-const char* password = "testpasstest";
+// const char* ssid     = "Paella🥘";
+// const char* password = "testpasstest";
 
-// const char* ssid     = "ndsgwifi";
-// const char* password = "H1b2idinF2@";
+const char* ssid     = "ndsgwifi";
+const char* password = "H1b2idinF2@";
 
-// Servers
-const char* serverUrl = "https://172.20.10.2:8443/data";
-const char* signUrl = "http://172.20.10.2:8000/receive-device-data/";
-const char* certDownloadUrl = "http://172.20.10.2:8000/download-cert/";
-const char* renewUrl = "http://172.20.10.2:8000/renew-cert/";
+// 13.211.126.142
+const char* serverUrl = "https://13.211.126.142:8443/data";
+const char* signUrl = "https://13.211.126.142:8000/receive-device-data/";
+const char* certDownloadUrl = "https://13.211.126.142:8000/download-cert/";
+const char* renewUrl = "https://13.211.126.142:8000/renew-cert/";
 
-WiFiClientSecure client;
+WiFiClientSecure mTLSclient;
 HTTPClient https;
 
 // Globals to hold certificate data in memory
@@ -92,7 +92,7 @@ void generateKeyAndCSR() {
   mbedtls_ctr_drbg_context ctr_drbg;
 
   unsigned char output_buf[2048];
-  const char* pers = "csr_gen_ecc";
+  const char *pers = "csr_gen_ecc";
 
   mbedtls_pk_init(&key);
   mbedtls_x509write_csr_init(&csr);
@@ -100,7 +100,7 @@ void generateKeyAndCSR() {
   mbedtls_entropy_init(&entropy);
 
   // 1. Seed Random Number Generator
-  mbedtls_ctr_drbg_seed(&ctr_drbg, mbedtls_entropy_func, &entropy, (const unsigned char*)pers, strlen(pers));
+  mbedtls_ctr_drbg_seed(&ctr_drbg, mbedtls_entropy_func, &entropy, (const unsigned char *)pers, strlen(pers));
 
   // 2. Generate ECC Key (secp256r1 / NIST P-256)
   Serial.println("Generating ECC key...");
@@ -186,44 +186,44 @@ int requestCert() {
   String jsonPayload;
   serializeJson(doc, jsonPayload);
 
-  WiFiClient raClient;
-  HTTPClient http;
+  WiFiClientSecure raClient;
 
   // Device Auth Checkpoint
   int responsecode = 0;
 
-  http.begin(raClient, signUrl);
-  while (responsecode != 202) {
+  raClient.setCACert(ca_cert_str.c_str());
+  https.begin(raClient, signUrl);
+  while (responsecode != 202){
 
     Serial.println("Sending device data...");
-    http.addHeader("Content-Type", "application/json");
-    responsecode = http.POST(jsonPayload);
+    https.addHeader("Content-Type", "application/json");
+    responsecode = https.POST(jsonPayload);
     Serial.println(responsecode);
 
     Serial.printf("Error sending CSR: %d - %s\n",
-                  responsecode, http.errorToString(responsecode).c_str());
+                  responsecode, https.errorToString(responsecode).c_str());
     delay(10000);
   }
-  http.end();
+  https.end();
 
   // Device Authenticated
   responsecode = 0;
 
-  http.begin(raClient, certDownloadUrl + WiFi.macAddress() + "/");
-  while (responsecode != 200) {
+  https.begin(raClient, certDownloadUrl + WiFi.macAddress() + "/");
+  while (responsecode != 200){
     delay(10000);
     Serial.println("Waiting for certificate...");
 
-    responsecode = http.GET();
-    if (responsecode == 200) {
-      String signedCert = http.getString();
+    responsecode = https.GET();
+    if (responsecode == 200){
+      String signedCert = https.getString();
       Serial.println("Certificate signed successfully!");
       writeFile("/client.crt", signedCert.c_str());
     }
     Serial.printf("Error sending CSR: %d - %s\n",
-                  responsecode, http.errorToString(responsecode).c_str());
+                  responsecode, https.errorToString(responsecode).c_str());
   }
-  http.end();
+  https.end();
 
   return 0;
 }
@@ -233,8 +233,8 @@ bool certExpiresWithinDay() {
   mbedtls_x509_crt_init(&crt);
 
   int ret = mbedtls_x509_crt_parse(&crt,
-                                   (const unsigned char*)client_cert_str.c_str(),
-                                   client_cert_str.length() + 1);
+              (const unsigned char*)client_cert_str.c_str(),
+              client_cert_str.length() + 1);
   if (ret != 0) {
     Serial.printf("Failed to parse client cert: -0x%04x\n", -ret);
     mbedtls_x509_crt_free(&crt);
@@ -244,11 +244,11 @@ bool certExpiresWithinDay() {
   struct tm expiry;
   memset(&expiry, 0, sizeof(expiry));
   expiry.tm_year = crt.valid_to.year - 1900;
-  expiry.tm_mon = crt.valid_to.mon - 1;
+  expiry.tm_mon  = crt.valid_to.mon  - 1;
   expiry.tm_mday = crt.valid_to.day;
   expiry.tm_hour = crt.valid_to.hour;
-  expiry.tm_min = crt.valid_to.min;
-  expiry.tm_sec = crt.valid_to.sec;
+  expiry.tm_min  = crt.valid_to.min;
+  expiry.tm_sec  = crt.valid_to.sec;
 
   time_t expiryTime = mktime(&expiry);
   time_t currentTime = time(nullptr);
@@ -263,35 +263,33 @@ bool certExpiresWithinDay() {
 void renewCertificate() {
   Serial.println("Renewing client certificate...");
 
-  WiFiClient raClient;
-  HTTPClient renewHttp;
   String url = String(renewUrl) + WiFi.macAddress() + "/";
-  if (!renewHttp.begin(raClient, url)) {
+  
+  if (!https.begin(mTLSClient, url)) {
     Serial.println("Failed to begin renewal connection");
     return;
   }
 
-  renewHttp.addHeader("Content-Type", "application/x-pem-file");
-  int httpCode = renewHttp.POST(client_cert_str);
+  https.addHeader("Content-Type", "application/x-pem-file");
+  int httpCode = https.POST(client_cert_str);
 
   if (httpCode == 200) {
-    String newCert = renewHttp.getString();
+    String newCert = https.getString();
     writeFile("/client.crt", newCert.c_str());
     client_cert_str = newCert;
-    client.setCertificate(client_cert_str.c_str());
+    mTLSclient.setCertificate(client_cert_str.c_str());
     Serial.println("Certificate renewed successfully");
   } else {
     Serial.printf("Certificate renewal failed: %d\n", httpCode);
   }
 
-  renewHttp.end();
+  https.end();
 }
 
 void setup() {
   Serial.begin(115200);
   delay(3000);
-  while (!Serial)
-    ;
+  while(!Serial);
 
   // 1. Mount SPIFFS
   if (!SPIFFS.begin(true)) {
@@ -299,22 +297,6 @@ void setup() {
     return;
   }
   Serial.println("SPIFFS Mounted");
-
-  // Remove previously generated keys and cert if needed
-
-  Serial.print("Normal Operation (0), Reset (1): ");
-
-  while (Serial.available() == 0) {
-  }
-
-  int mode = Serial.parseInt();
-
-  if (mode == RESET) {
-    SPIFFS.remove("/client.key");
-    SPIFFS.remove("/client.csr");
-    SPIFFS.remove("/client.crt");
-    Serial.println("Board credentials reset");
-  }
 
   // 2. Generate key and CSR if key does not exist
   if (!SPIFFS.exists("/client.key")) generateKeyAndCSR();
@@ -327,11 +309,30 @@ void setup() {
   }
   Serial.println("Connected to WiFi");
 
+  // 4. Sync Time for Cert Validation
+  setClock();
+
+  // Remove previously generated keys and cert if needed
+  Serial.print("Normal Operation (0), Reset (1): ");
+
+  while (Serial.available() == 0) {
+  }
+
+  int mode = Serial.parseInt(); 
+
+  if (mode == RESET) {
+    SPIFFS.remove("/client.key");
+    SPIFFS.remove("/client.csr");
+    SPIFFS.remove("/client.crt");
+    Serial.println("Board credentials reset");
+    while(1);
+  }
+
   // 5. Load root CA cert (needed for TLS to RA and data server)
   ca_cert_str = readFile("/root-ca.crt");
   if (ca_cert_str == "") {
     Serial.println("CRITICAL ERROR: Could not load root CA certificate!");
-    while (1) delay(1000);
+    while(1) delay(1000);
   }
 
   // 6. Request client cert if not found or initial boot
@@ -342,19 +343,39 @@ void setup() {
 
   // 8. Load client cert and key
   client_cert_str = readFile("/client.crt");
-  client_key_str = readFile("/client.key");
+  client_key_str  = readFile("/client.key");
 
   if (client_cert_str == "" || client_key_str == "") {
     Serial.println("CRITICAL ERROR: Could not load certificate files!");
-    while (1) delay(1000);
+    while(1) delay(1000);
   }
-  // 4. Sync Time for Cert Validation
-  setClock();
 
   // 9. Apply Certs to Client
-  client.setCACert(ca_cert_str.c_str());
-  client.setCertificate(client_cert_str.c_str());
-  client.setPrivateKey(client_key_str.c_str());
+  mTLSclient.setCACert(ca_cert_str.c_str());
+  mTLSclient.setCertificate(client_cert_str.c_str());
+  mTLSclient.setPrivateKey(client_key_str.c_str());
+
+  if (WiFi.status() == WL_CONNECTED) {
+    WiFiClient client;
+    HTTPClient http;
+    String payload = "";
+
+    http.begin(client, "http://api.ipify.org");
+    int httpResponseCode = http.GET();
+
+    if (httpResponseCode > 0) {
+      Serial.print("HTTP Response code: ");
+      Serial.println(httpResponseCode);
+      payload = http.getString();
+      Serial.print("the server provided this text : ");
+      Serial.println(payload);
+    }
+    else {
+      Serial.print("Error code: ");
+      Serial.println(httpResponseCode);
+    }
+    http.end();
+  }
 }
 
 void loop() {
@@ -363,7 +384,7 @@ void loop() {
   }
 
   Serial.print("Connecting to server... ");
-  if (https.begin(client, serverUrl)) {
+  if (https.begin(mTLSclient, serverUrl)) {
     https.addHeader("Content-Type", "application/json");
 
     // Prepare JSON Data
@@ -371,14 +392,14 @@ void loop() {
 
     now = time(nullptr);
     timeinfo = *localtime(&now);
-    char timeStr[20];
+    char timeStr[20]; 
     strftime(timeStr, sizeof(timeStr), "%Y-%m-%d %H:%M:%S", &timeinfo);
 
     doc["time"] = timeStr;
     doc["MAC"] = WiFi.macAddress();
-
+    
     serializeJson(doc, data);
-
+    
     int httpResponseCode = https.POST(data);
 
     if (httpResponseCode > 0) {
