@@ -1,5 +1,3 @@
-from datetime import timedelta
-
 import random
 
 from django.shortcuts import render, redirect
@@ -20,10 +18,6 @@ from pathlib import Path
 from idverification.mosip import otp_auth
 from idverification.models import Device, User, State
 from idverification.helper import get_select_list
-
-registeringMACs = []
-
-CHALLENGE_COUNT_THRESHOLD = 3
 
 basePathToRepo = Path(__file__).parent.parent.parent.parent
 
