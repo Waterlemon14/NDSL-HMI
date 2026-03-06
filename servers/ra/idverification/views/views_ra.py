@@ -1,35 +1,31 @@
+from datetime import timedelta
+from pathlib import Path
+
 import random
+import json
+import requests
 
 from django.shortcuts import render, redirect
-from django.http import JsonResponse, HttpResponse
-from django.views.decorators.csrf import ensure_csrf_cookie, csrf_exempt
+from django.http import JsonResponse
+from django.views.decorators.csrf import ensure_csrf_cookie
 from django.utils import timezone
 from django.utils.dateparse import parse_datetime
 from django.contrib import messages
 from django.contrib.auth import login, logout
 from django.db.models import Case, When
-from datetime import timedelta
-
-import json
-import requests
-from pathlib import Path
-
 
 from idverification.mosip import otp_auth
-from idverification.models import Device, User, State
+from idverification.models import Device, User, State, Notification
 from idverification.helper import get_select_list
 
-basePathToRepo = Path(__file__).parent.parent.parent.parent
 
-ca_url = "https://localhost:15000/sign"
-ca_renew_url = "https://localhost:15000/renew"
+basePathToRepo = Path(__file__).parent.parent.parent.parent.parent
+
 ca_revoke_url = "https://localhost:15000/revoke"
 
 cert_file = basePathToRepo / "servers" / "ra" / "id_server.crt"
 key_file = basePathToRepo / "servers" / "ra" / "id_server.key"
 ca_file = basePathToRepo / "servers" / "ra" / "root-ca.crt"
-
-registeringMACs = []
 
 CHALLENGE_COUNT_THRESHOLD = 3
 
@@ -113,191 +109,19 @@ def select_device(request):
     
     return render(request, 'select-device.html', {'likely': likely, 'others': others})
 
-@csrf_exempt
-def receive_device_data(request):
-    response = HttpResponse()
-
-    if request.method == "POST":
-        data = json.loads(request.body)
-        ip = data.get('IP')
-        mac = data.get('MAC')
-        pk = data.get('PublicKey')
-        csr = data.get('CSR')
-        challengeCount = 0
-        owner = None
-        print(ip,mac)
-        
-        device = Device.objects.filter(mac=mac).first()
-
-        if device:
-            challengeCount = device.challengeCount        
-            manufacturer = device.manufacturer
-            owner = device.owner
-        
-        else:
-            mac_response = requests.get("https://api.macvendors.com/"+mac)
-            if mac_response.status_code != 200:
-                print("Manufacturer cannot be determined: ", mac_response.status_code)
-                return HttpResponse("Manufacturer cannot be determined", status=404)
-            manufacturer = mac_response.content.decode()
-        
-        device, _ = Device.objects.update_or_create(
-            mac=mac,
-            defaults={
-                'ip':ip, 
-                'manufacturer':manufacturer,
-                'public_key': pk, 
-                'csr':csr, 
-                'challengeCount': challengeCount,
-                'owner': owner
-                },
-        )
-
-        print("Device",device.id,"Challenge Count: ", device.challengeCount, "updatedAt: ", device.updatedAt)
-
-        if device.challengeCount == CHALLENGE_COUNT_THRESHOLD:
-            response.status_code = 202
-        else:
-            response.status_code = 201
-
-        return response
-    
-    response.status_code = 400
-    return response
-
-def download_cert(request, mac_address):
-    device = Device.objects.get(mac=mac_address)
-    if device.certificate:
-        return HttpResponse(device.certificate, content_type="application/x-pem-file")
-
-    elif device.challengeCount == CHALLENGE_COUNT_THRESHOLD:
-        if device.public_key:
-            headers = {"Content-Type": "application/json"}
-            payload = {
-                "PublicKey": device.public_key,
-                "IPAddress": device.ip,
-                "Subject": {
-                    "Country": "PH",
-                    "State": "Metro Manila",
-                    "Locality": "Quezon City",
-                    "Organization": "MyIoTProject",
-                    "CommonName": device.ip,
-                },
-            }
-
-            ca_response = requests.post(
-                ca_url,
-                json=payload,
-                headers=headers,
-                cert=(cert_file, key_file),
-                verify=ca_file
-                # verify=False
-            )
-
-        elif device.csr:
-            headers = {"Content-Type": "application/pem-csr"}
-            payload = device.csr
-
-            ca_response = requests.post(
-                ca_url,
-                data=payload,
-                headers=headers,
-                cert=(cert_file, key_file),
-                verify=ca_file
-                # verify=False
-            )
-
-        if ca_response.status_code == 200:
-            device.certificate = ca_response.text
-            device.challengeCount = 0
-            device.save()
-
-        else:
-            print(ca_response.text)
-
-        return HttpResponse(device.certificate, content_type="application/x-pem-file")
-
-    return HttpResponse("Cert not ready", status=404)
-
-@csrf_exempt
-def renew_cert(request, mac_address):
-    if request.method != "POST":
-        return HttpResponse("Method not allowed", status=405)
-
-    try:
-        device = Device.objects.get(mac=mac_address)
-    except Device.DoesNotExist:
-        return HttpResponse("Device not found", status=404)
-
-    cert_pem = request.body
-
-    ca_response = requests.post(
-        ca_renew_url,
-        data=cert_pem,
-        headers={"Content-Type": "application/x-pem-file"},
-        cert=(cert_file, key_file),
-        verify=ca_file,
-    )
-
-    if ca_response.status_code == 200:
-        device.certificate = ca_response.text
-        device.save()
-        return HttpResponse(device.certificate, content_type="application/x-pem-file")
-
-    print("CA renew error:", ca_response.status_code, ca_response.text)
-    return HttpResponse(ca_response.text, status=ca_response.status_code)
-
-@csrf_exempt
-def report_device(request):
-    if request.method != "POST":
-        return HttpResponse("Method not allowed", status=400)
-    try:
-        data = json.loads(request.body)
-    except json.JSONDecodeError:
-        return HttpResponse("Invalid JSON", status=400)
-
-    print(data)
-    mac = data.get("mac")
-    anomaly = data.get("anomaly")
-
-    if anomaly == "disconnected":
-        try:
-            device = Device.objects.get(mac=mac)
-            device.state = State.SUSPENDED
-            device.save()
-        except Device.DoesNotExist:
-            pass  # MAC not registered in RA
-    else: #elif anomaly == "stolen":
-        try:
-            device, _ = Device.objects.update_or_create(
-                mac=mac,
-                defaults={'state': State.REVOKED},
-            )
-
-            if device.certificate:
-                ca_response = requests.post(
-                    ca_revoke_url,
-                    json={"certificate": device.certificate, "reason": "device_stolen"},
-                    cert=(cert_file, key_file),
-                    verify=ca_file,
-                )
-                if ca_response.status_code == 200:
-                    device.certificate = ""
-                    device.save()
-                    print(f"Revoked certificate for reported device {mac}")
-                else:
-                    print(f"CA revoke failed for {mac}: {ca_response.status_code} {ca_response.text}")
-        except Device.DoesNotExist:
-            pass  # MAC not registered in RA
-
-    return HttpResponse("Device Suspended", status=200)
-
-
 def ownership_challenge(request, device_id):
     if not request.user.is_authenticated:
         return redirect("/")
         
     device = Device.objects.get(id=int(device_id))
+
+    if device.certificate:
+        previous_url = request.META.get('HTTP_REFERER')
+        
+        if previous_url:
+            return redirect(previous_url)
+        else:
+            return redirect("/")
 
     return render(request, "ownership-challenge.html", {"info": "Disconnect your device now", "device": device})
 
@@ -352,11 +176,15 @@ def check_status(request, device_id):
                     device.save()
                     
                     if device.challengeCount == CHALLENGE_COUNT_THRESHOLD:
-                        messages.success(request, "Ownership challenge complete! Certificate now available for device with MAC address " + device.mac + ".")
+                        if device.state == State.REVOKED:
+                            redirect = "/view-device"
+                        else:
+                            redirect = "/select-device"
                         device.owner = request.user
                         device.state = State.RECONNECTING
                         device.save()
-                        return JsonResponse({"status": "complete", "count": device.challengeCount, "redirect": "/select-device",})
+                        messages.success(request, "Ownership challenge complete! Certificate now available for device with MAC address " + device.mac + ".")
+                        return JsonResponse({"status": "complete", "count": device.challengeCount, "redirect": redirect,})
                     else:
                         return JsonResponse({"status": "ok", "count": device.challengeCount})
                 
@@ -382,6 +210,20 @@ def view_device(request):
             default=3,
         )
     ).order_by("state_priority", "-updatedAt")
+
+    notifications = Notification.objects.filter(user=request.user, is_read=False)
+
+    for notification in notifications:
+        if notification.level == Notification.ERROR:
+            messages.error(request, notification.message)
+        elif notification.level == Notification.SUCCESS:
+            messages.success(request, notification.message)
+        elif notification.level == Notification.WARNING:
+            messages.warning(request, notification.message)
+        elif notification.level == Notification.INFO:
+            messages.info(request, notification.message)
+        notification.is_read = True
+        notification.save()
 
     if request.method == "POST":
         device_id = request.POST.get("device_id")
@@ -414,23 +256,27 @@ def view_device(request):
                 else:
                     print("CA revoke error:", ca_response.status_code, ca_response.text)
                     messages.error(request, f"Failed to revoke certificate: {ca_response.text}")
+            
+            elif action == "Re-issue":
+                if not device.state == State.REVOKED:
+                    msg = f"Device {device.mac} has not been revoked"
+                    if device.certificate:
+                        msg = msg + "and currently has a certificate."
+                    else:
+                        msg = msg + "."
+                    messages.error(request, msg)
+                elif device.certificate:
+                    messages.error(request, f"Device {device.mac} currently has a certificate.")
+                
+                else:
+                    return redirect("/ownership-challenge/" + device_id)
+
 
             return redirect("view_device")
         except (ValueError, Device.DoesNotExist):
             messages.error(request, f"Could not find device.")
     
     return render(request, 'view-device.html', {'devices': devices, "state_choices": State.CHOICES})
-
-def reconnect_device(request, mac_address):
-    print(mac_address)
-    try:
-        device = Device.objects.get(mac=mac_address)
-        device.state = State.CONNECTED
-        device.save()
-    except Device.DoesNotExist:
-        pass  # MAC not registered in RA
-    
-    return HttpResponse("Device Reconnected", status=200)
 
 def logout_view(request):
     logout(request)

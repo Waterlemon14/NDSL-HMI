@@ -17,3 +17,9 @@
 6. Provide OTP
 
 7. Provide CSR
+
+
+
+
+# Inis counter
+1. python manage.py runserver - 1
