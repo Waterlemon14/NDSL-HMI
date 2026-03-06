@@ -108,7 +108,13 @@ void benchmarkDataSend() {
       http.addHeader("Content-Type", "application/json");
 
       StaticJsonDocument<200> doc;
-      doc["temp"] = random(15, 21);
+      time_t now = time(nullptr);
+      struct tm* timeinfo = localtime(&now);
+      char buffer[20]; 
+      strftime(buffer, sizeof(buffer), "%Y-%m-%d %H:%M:%S", timeinfo);
+      int temp = random(15, 21);
+      doc["temp"] = temp;
+      doc["time"] = buffer;
       doc["MAC"] = WiFi.macAddress();
       String data;
       serializeJson(doc, data);
