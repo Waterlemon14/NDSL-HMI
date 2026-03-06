@@ -18,6 +18,7 @@ from idverification.mosip import otp_auth
 from idverification.models import Device, User, State, Notification
 from idverification.helper import get_select_list
 
+
 basePathToRepo = Path(__file__).parent.parent.parent.parent.parent
 
 ca_revoke_url = "https://localhost:15000/revoke"

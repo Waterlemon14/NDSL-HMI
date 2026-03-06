@@ -265,7 +265,7 @@ void renewCertificate() {
 
   String url = String(renewUrl) + WiFi.macAddress() + "/";
   
-  if (!https.begin(mTLSClient, url)) {
+  if (!https.begin(mTLSclient, url)) {
     Serial.println("Failed to begin renewal connection");
     return;
   }
