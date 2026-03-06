@@ -66,8 +66,6 @@ static int RNG(uint8_t* dest, unsigned size) {
 
 // ─── Benchmark 1: ECC Key Generation (uECC) ─────────────────────
 void benchmarkKeyGeneration() {
-  Serial.println("Running Key Generation benchmark...");
-
   for (int i = 0; i < BENCHMARK_ITERATIONS; i++) {
     uint8_t temp_sk[32];
     uint8_t temp_pk[64];
@@ -78,38 +76,31 @@ void benchmarkKeyGeneration() {
     uECC_make_key(temp_pk, temp_sk, curve);
     unsigned long elapsed = millis() - start;
 
-    Serial.printf("  Iteration %d: %lu ms\n", i + 1, elapsed);
+    Serial.printf("KeyGen,%d,%lu,SUCCESS\n", i + 1, elapsed);
     
     delay(10);
   }
-
-  Serial.printf ("Key Generation (uECC) test with %d iterations complete.\n", BENCHMARK_ITERATIONS);
 }
 
 // ─── Benchmark 2: TLS Handshake (BearSSL) ───────────────────────
 void benchmarkTLSHandshake() {
-  Serial.println("Running TLS Handshake benchmark...");
-
   for (int i = 0; i < BENCHMARK_ITERATIONS; i++) {
     unsigned long start = millis();
     bool connected = secureclient.connect(host, commsport);
     unsigned long elapsed = millis() - start;
 
     if (connected) {
-      Serial.printf("  Iteration %d: %lu ms\n", i + 1, elapsed);
+      Serial.printf("TLSHandshake,%d,%lu,SUCCESS\n", i + 1, elapsed);
       secureclient.stop();
     } else {
-      Serial.printf("  Iteration %d: FAILED\n", i + 1);
+      Serial.printf("TLSHandshake,%d,%lu,FAILED\n", i + 1, elapsed);
     }
     delay(500); // Allow sockets to clean up
   }
-  Serial.printf ("TLS Handshake (BearSSL) test with %d iterations complete.\n", BENCHMARK_ITERATIONS);
 }
 
 // ─── Benchmark 3: Data Send Roundtrip (JSON + POST) ──────────────
 void benchmarkDataSend() {
-  Serial.println("Running Data Send Roundtrip benchmark...");
-
   for (int i = 0; i < BENCHMARK_ITERATIONS; i++) {
     if (secureclient.connect(host, commsport)) {
       HTTPClient http;
@@ -128,9 +119,9 @@ void benchmarkDataSend() {
       unsigned long elapsed = millis() - start;
       
       if (httpCode > 0) {
-        Serial.printf("  Iteration %d: %lu ms (HTTP %d)\n", i + 1, elapsed, httpCode);
+        Serial.printf("DataSend,%d,%lu,HTTP%d\n", i + 1, elapsed, httpCode);
       } else {
-        Serial.printf("  Iteration %d: %lu ms (Error: %s)\n", i + 1, elapsed,
+        Serial.printf("DataSend,%d,%lu,\"ERROR:%s\"\n", i + 1, elapsed,
                       http.errorToString(httpCode).c_str());
       }
       http.end();
@@ -138,7 +129,6 @@ void benchmarkDataSend() {
     }
     delay(10);
   }
-  Serial.printf ("Data Send Roundtrip test with %d iterations complete.\n", BENCHMARK_ITERATIONS);
 }
 
 // ─── Setup (Initialization logic preserved) ──────────────────────

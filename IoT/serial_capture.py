@@ -85,21 +85,23 @@ def main():
 
             if START_MARKER in line:
                 capturing = True
-                captured_lines = [line]
                 continue
 
             if capturing:
-                captured_lines.append(line)
                 if END_MARKER in line:
                     break
+                if "," in line:
+                    captured_lines.append(line)
+
     except KeyboardInterrupt:
         print("\nAborted by user.")
     finally:
         ser.close()
 
     if captured_lines:
-        out_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), f"results_{device}.txt")
+        out_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), f"results_{device}.csv")
         with open(out_path, "w") as f:
+            f.write("TestType,Iteration,Elapsed_ms,Result\n")
             f.write("\n".join(captured_lines) + "\n")
         print(f"\nResults saved to {out_path}")
     else:
