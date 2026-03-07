@@ -5,6 +5,7 @@ import sys
 import os
 import glob
 import serial
+
 import serial.tools.list_ports
 import argparse
 
@@ -20,7 +21,7 @@ def find_serial_port():
         ports = glob.glob(pattern)
         if ports:
             return ports[0]
-    
+          
     target_keywords = ["USB", "UART", "CP210", "CH340", "FT232"]
     ports = serial.tools.list_ports.comports()
 
@@ -28,7 +29,7 @@ def find_serial_port():
         for keyword in target_keywords:
             if keyword.lower() in port.description.lower():
                 return port.device
-
+              
     return None
 
 

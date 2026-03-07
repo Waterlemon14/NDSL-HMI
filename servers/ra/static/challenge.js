@@ -52,11 +52,15 @@ function endChallenge() {
     let count = data.count;
     if (data.status === "ok") {
       console.log("Passed disconnect");
+      let checking = false;
+      let resolved = false;
       const countdown = setInterval(() => {
+        if (resolved) return;
         timer -= 1;
         document.getElementById('counter').innerText = `Challenge Counter: ${count}`
 
         if (timer <= 0) {
+          resolved = true;
           clearInterval(countdown);
           document.getElementById('info').innerText = 'Device failed current test. Disconnect your device now.';
           fetch(`/check-status/${deviceID}/`, {
@@ -72,35 +76,40 @@ function endChallenge() {
             document.getElementById('counter').innerText = `Challenge Counter: ${count}`;
             document.getElementById('start-challenge').style.visibility = 'visible';
           });
-        } else {
-          document.getElementById('info').innerText = `Reconnect your device within ${timer} seconds.`;
-        }
 
-        fetch(`/check-status/${deviceID}/`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'X-CSRFToken': csrftoken
-          },
-          body: JSON.stringify({ action: 'check' })
-        }).then(response => response.json())
-        .then(data => {
-          count = data.count;
-          document.getElementById('counter').innerText = `Challenge Counter: ${count}`
-          if (data.status === "ok") {
-            console.log("Passed reconnect");
-            document.getElementById('info').innerText = 'Device passed current test. Disconnect your device now.';
-            clearInterval(countdown);
-            document.getElementById('start-challenge').style.visibility = 'visible';
-          } else if (data.status === "complete") {
-            console.log("Passed reconnect");
-            document.getElementById('info').innerText = 'Ownership challenge completed!';
-            clearInterval(countdown);            
-            window.location.href = data.redirect
-          } else {
-            console.error("Failed reconnect")
-          }
-        });
+        } else if (!checking) {
+          document.getElementById('info').innerText = `Reconnect your device within ${timer} seconds`;
+          checking = true;
+          fetch(`/check-status/${deviceID}/`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'X-CSRFToken': csrftoken
+            },
+            body: JSON.stringify({ action: 'check' })
+          }).then(response => response.json())
+          .then(data => {
+            checking = false;
+            if (resolved) return;
+            count = data.count;
+            document.getElementById('counter').innerText = `Challenge Counter: ${count}`
+            if (data.status === "ok") {
+              resolved = true;
+              clearInterval(countdown);
+              console.log("Passed reconnect");
+              document.getElementById('info').innerText = 'Device passed current test. Disconnect your device now.';
+              document.getElementById('start-challenge').style.visibility = 'visible';
+            } else if (data.status === "complete") {
+              resolved = true;
+              clearInterval(countdown);
+              console.log("Passed reconnect");
+              document.getElementById('info').innerText = 'Ownership challenge completed!';
+              window.location.href = data.redirect
+            } else {
+              console.error("Failed reconnect")
+            }
+          });
+        }
       }, 1000);
     } else {
       console.error("Failed disconnect");

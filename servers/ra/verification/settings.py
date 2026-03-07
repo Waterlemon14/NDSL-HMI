@@ -25,6 +25,7 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 SECRET_KEY = os.environ.get('DJANGO_SECRET_KEY', 'django-insecure-*=m@#j+7-kyz!w15_zot@-tkqlgtg(y-lvzny6mf=-!!9ck((%')
 
 DEBUG = os.environ.get('DJANGO_DEBUG', 'True') == 'True'
+# DEBUG = False
 
 ALLOWED_HOSTS = [
     'localhost',
@@ -53,6 +54,7 @@ INSTALLED_APPS = [
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
+    'whitenoise.middleware.WhiteNoiseMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
@@ -164,3 +166,12 @@ CSRF_TRUSTED_ORIGINS = [
 if os.environ.get('EC2_PUBLIC_IP'):
     CSRF_TRUSTED_ORIGINS.append(f"https://{os.environ['EC2_PUBLIC_IP']}:8000")
     CSRF_TRUSTED_ORIGINS.append(f"https://{os.environ['EC2_PUBLIC_IP']}:8443")
+
+# Production security settings
+if not DEBUG:
+    SECURE_HSTS_SECONDS = 31536000
+    SECURE_SSL_REDIRECT = True
+    SECURE_HSTS_PRELOAD = True
+    SECURE_HSTS_INCLUDE_SUBDOMAINS = True
+    SESSION_COOKIE_SECURE = True
+    CSRF_COOKIE_SECURE = True

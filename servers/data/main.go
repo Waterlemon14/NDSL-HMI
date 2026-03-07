@@ -17,6 +17,7 @@ import (
 	"path"
 	"time"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/joho/godotenv"
 )
@@ -53,6 +54,9 @@ func (s DeviceState) IsValid() bool {
 
 // db is the connection pool to the Supabase Postgres database.
 var db *pgxpool.Pool
+
+// raClient is an HTTP client configured to trust the root CA for calls to the RA server.
+var raClient *http.Client
 
 // initDB connects to Postgres and ensures the received_data table exists.
 func initDB(databaseURL string) error {
@@ -150,6 +154,15 @@ func main() {
 	rootCAPool, err := loadCertPool(BASE_PATH)
 	if err != nil {
 		panic(err.Error())
+	}
+
+	raClient = &http.Client{
+		Timeout: 10 * time.Second,
+		Transport: &http.Transport{
+			TLSClientConfig: &tls.Config{
+				RootCAs: rootCAPool,
+			},
+		},
 	}
 
 	tlsConfig := &tls.Config{
@@ -276,15 +289,14 @@ func checkDeviceState(mac string) (DeviceState, error) {
 }
 
 func reconnectDevice(mac string) error {
-	client := &http.Client{Timeout: 10 * time.Second}
-	reconnectURL := fmt.Sprintf("http://localhost:8000/reconnect/%s/", mac)
+	reconnectURL := fmt.Sprintf("https://localhost:8000/reconnect/%s/", mac)
 
 	req, err := http.NewRequest("GET", reconnectURL, nil)
 	if err != nil {
 		// http.Error(w, "Internal error", http.StatusInternalServerError)
 		return err
 	}
-	resp, err := client.Do(req)
+	resp, err := raClient.Do(req)
 	if err != nil {
 		log.Printf("Reconnect request failed: %v", err)
 		// http.Error(w, "Reconnect upstream unreachable", http.StatusBadGateway)
@@ -305,7 +317,6 @@ func reconnectDevice(mac string) error {
 
 func suspendDevice(mac string) error {
 	fmt.Printf("%sThe variable time exceeds the calculated limit.%s\n", "\033[33m", "\033[0m")
-	client := &http.Client{Timeout: 10 * time.Second}
 	payload := Report{
 		MAC:     mac,
 		Anomaly: "disconnected",
@@ -317,14 +328,14 @@ func suspendDevice(mac string) error {
 		return err
 	}
 	reqBody := bytes.NewBuffer(jsonData)
-	req, err := http.NewRequest("POST", "http://localhost:8000/report/", reqBody)
+	req, err := http.NewRequest("POST", "https://localhost:8000/report/", reqBody)
 	if err != nil {
 		log.Printf("Request body read error: %v", err)
 		// http.Error(w, "Internal error", http.StatusInternalServerError)
 		return err
 	}
 	req.Header.Set("Content-Type", "application/json")
-	resp, err := client.Do(req)
+	resp, err := raClient.Do(req)
 	if err != nil {
 		log.Printf("Report request failed: %v", err)
 		// http.Error(w, "Anomaly reported but upstream unreachable", http.StatusBadGateway)
@@ -348,10 +359,12 @@ func isAnomaly(mac string) (bool, error) {
 		"SELECT created_at FROM received_data WHERE mac = $1 ORDER BY created_at DESC LIMIT 1",
 		mac).Scan(&lastCreatedAt)
 
-	if err != nil {
+	if errors.Is(err, pgx.ErrNoRows) {
 		// First time seeing this MAC: no previous activity, so no anomaly
-		// http.Error(w, "Server Database error", http.StatusInternalServerError)
 		return false, nil
+	} else if err != nil {
+		log.Printf("Error querying anomaly for MAC %s: %v", mac, err)
+		return false, err
 	}
 
 	now := time.Now()
