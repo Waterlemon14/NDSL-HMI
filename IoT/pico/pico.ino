@@ -17,33 +17,42 @@
 
 // Security packages 
 #include <uECC.h>
-
 // Wifi credentials
-// const char* ssid     = "test";
-// const char* password = "passtest";
+const char* ssid     = "test";
+const char* password = "passtest";
 
-const char* ssid     = "Paella🥘";
-const char* password = "testpasstest";
+// const char* ssid     = "Paella🥘";
+// const char* password = "testpasstest";
 
 // const char* ssid     = "ndsgwifi";
 // const char* password = "H1b2idinF2@";
 
-// Server Info
-const char* server_ip = "172.20.10.2";
-IPAddress host(172,20,10,2);
+// Servers
+// const char* server = "172.20.10.2";
+// IPAddress host(172,20,10,2);
+// const char* data_server = "https://172.20.10.2:8443/data";
+
+// const char* server = "172.16.199.223";
+// IPAddress host(172,16,199,223);
+// const char* data_server = "https://172.16.199.223:8443/data";
+
+const char* server = "192.168.0.212";
+IPAddress host(192,168,0,212);
+const char* data_server = "https://192.168.0.212:8443/data";
+
 const int idport = 8000;
 const int commsport = 8443;
 
 WiFiClient client;
 WiFiClientSecure secureclient;
 HTTPClient http;
+IPAddress ip;
 
-// Globals to hold certificate data in memory
 uint8_t sk[32];
 uint8_t pk[64];
 String caCert;
 String clientCert;
-uint8_t key_der[121]; 
+uint8_t key_der[121];
 
 BearSSL::X509List* trustRoot = nullptr;
 BearSSL::X509List* clientCertList = nullptr;
@@ -209,16 +218,13 @@ void requestCert() {
   while (responsecode != 202) {
     Serial.println("Sending device data...");
 
-    if(client.connect(host, idport)) {
-        http.begin(client, server_ip, idport, "/receive-device-data/", false); // false = HTTP
+    if(http.begin(client, server_ip, idport, "/receive-device-data/", false)) { // false = HTTP
         http.addHeader("Content-Type", "application/json");
         responsecode = http.POST(jsonPayload);
         Serial.printf("POST Response: %d\n", responsecode);
-
         http.end();
-        client.stop();
     } else {
-        Serial.println("Connection to ID server failed, retrying...");
+      Serial.println("Http connection failed!");
     }
     delay(10000);
   }
@@ -229,10 +235,9 @@ void requestCert() {
     delay(10000);
     Serial.println("Waiting for certificate...");
     
-    if(client.connect(host, idport)) {
-        String url = "/download-cert/" + WiFi.macAddress() + "/";
-        Serial.println(url);
-        http.begin(client, server_ip, idport, url, false);
+    String url = "/download-cert/" + WiFi.macAddress() + "/";
+    Serial.println(url);
+    if(http.begin(client, server_ip, idport, url, false);) {
         responsecode = http.GET();
         
         if (responsecode == 200) {
@@ -245,7 +250,6 @@ void requestCert() {
             Serial.printf("Cert not ready yet (Code %d)\n", responsecode);
         }
         http.end();
-        client.stop();
     }
   }
   // while(1);
@@ -335,7 +339,6 @@ void setup() {
   unsigned allowed_usages = BR_KEYTYPE_KEYX | BR_KEYTYPE_SIGN; 
   unsigned cert_issuer_key_type = BR_KEYTYPE_RSA; 
   secureclient.setTrustAnchors(trustRoot);
-  // secureclient.setInsecure();
   secureclient.setClientECCert(clientCertList, deviceKey, allowed_usages, cert_issuer_key_type);
 
   Serial.print("Checking sk alignment: ");
@@ -351,7 +354,7 @@ void setup() {
 void loop() {
   if (WiFi.status() == WL_CONNECTED) {
     Serial.print("Connecting to Data Server... ");
-    if (secureclient.connect(host, commsport)) {
+    if (http.begin(secureclient, data_server)) {
       Serial.println("Connected!");
 
       // Prepare JSON Data
@@ -369,7 +372,6 @@ void loop() {
       serializeJson(doc, data);
 
       // Send HTTP POST
-      http.begin(secureclient, String("https://") + server_ip + ":" + commsport + "/data");
       http.addHeader("Content-Type", "application/json");
       
       int httpCode = http.POST(data);
@@ -383,7 +385,6 @@ void loop() {
       }
       
       http.end();
-      secureclient.stop();
     } else {
       Serial.println("Connection Failed.");
       char err[100];
@@ -392,7 +393,6 @@ void loop() {
     }
   } else {
     Serial.println("WiFi Disconnected");
+    delay(10);
   }
-  
-  delay(10000); // Wait 10 seconds before next push
 }
