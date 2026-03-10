@@ -24,21 +24,21 @@
 #include "mbedtls/oid.h"
 #include "mbedtls/x509_crt.h"
 
+// Set LOCAL_SERVER_IP to the IP of the machine running the servers on your LAN
+#define LOCAL_SERVER_IP "192.168.0.212"
+
 // Wifi credentials
 // const char* ssid     = "test";
 // const char* password = "passtest";
 
-// const char* ssid     = "Paella🥘";
-// const char* password = "testpasstest";
-
 const char* ssid     = "ndsgwifi";
 const char* password = "H1b2idinF2@";
 
-// 13.239.139.188
-const char* serverUrl = "https://13.239.139.188:8443/data";
-const char* signUrl = "https://13.239.139.188:8000/receive-device-data/";
-const char* certDownloadUrl = "https://13.239.139.188:8000/download-cert/";
-const char* renewUrl = "https://13.239.139.188:8000/renew-cert/";
+// Local server endpoints (RA on :8000 via manage.py runserver, Data on :8443)
+const char* serverUrl = "https://" LOCAL_SERVER_IP ":8443/data";
+const char* signUrl = "http://" LOCAL_SERVER_IP ":8000/receive-device-data/";
+const char* certDownloadUrl = "http://" LOCAL_SERVER_IP ":8000/download-cert/";
+const char* renewUrl = "http://" LOCAL_SERVER_IP ":8000/renew-cert/";
 
 WiFiClientSecure mTLSclient;
 HTTPClient https;
@@ -163,10 +163,33 @@ void setClock() {
 }
 
 int requestCert() {
-  IPAddress ip = WiFi.localIP();
+
+  if (WiFi.status() == WL_CONNECTED) {
+    WiFiClient client;
+    HTTPClient http;
+    String payload = "";
+
+    http.begin(client, "http://api.ipify.org");
+    int httpResponseCode = http.GET();
+
+    if (httpResponseCode > 0) {
+      Serial.print("HTTP Response code: ");
+      Serial.println(httpResponseCode);
+      payload = http.getString();
+      Serial.print("the server provided this text : ");
+      Serial.println(payload);
+    }
+    else {
+      Serial.print("Error code: ");
+      Serial.println(httpResponseCode);
+    }
+    http.end();
+  }
+
+  // IPAddress ip = WiFi.localIP();
 
   Serial.print("IP address: ");
-  Serial.println(ip);
+  Serial.println(payload);
   Serial.print("MAC address: ");
   Serial.println(WiFi.macAddress());
 
@@ -180,18 +203,17 @@ int requestCert() {
   Serial.printf("Requesting certificate from %s...\n", signUrl);
 
   JsonDocument doc;
-  doc["IP"] = ip.toString();
+  doc["IP"] = payload;
   doc["MAC"] = WiFi.macAddress();
   doc["CSR"] = csr;
   String jsonPayload;
   serializeJson(doc, jsonPayload);
 
-  WiFiClientSecure raClient;
+  WiFiClient raClient;
 
   // Device Auth Checkpoint
   int responsecode = 0;
 
-  raClient.setCACert(ca_cert_str.c_str());
   https.begin(raClient, signUrl);
   while (responsecode != 202){
 
@@ -264,17 +286,20 @@ void renewCertificate() {
   Serial.println("Renewing client certificate...");
 
   String url = String(renewUrl) + WiFi.macAddress() + "/";
-  
-  if (!https.begin(mTLSclient, url)) {
+
+  WiFiClient raClient;
+  HTTPClient http;
+
+  if (!http.begin(raClient, url)) {
     Serial.println("Failed to begin renewal connection");
     return;
   }
 
-  https.addHeader("Content-Type", "application/x-pem-file");
-  int httpCode = https.POST(client_cert_str);
+  http.addHeader("Content-Type", "application/x-pem-file");
+  int httpCode = http.POST(client_cert_str);
 
   if (httpCode == 200) {
-    String newCert = https.getString();
+    String newCert = http.getString();
     writeFile("/client.crt", newCert.c_str());
     client_cert_str = newCert;
     mTLSclient.setCertificate(client_cert_str.c_str());
@@ -283,7 +308,7 @@ void renewCertificate() {
     Serial.printf("Certificate renewal failed: %d\n", httpCode);
   }
 
-  https.end();
+  http.end();
 }
 
 void setup() {
@@ -353,28 +378,6 @@ void setup() {
   mTLSclient.setCACert(ca_cert_str.c_str());
   mTLSclient.setCertificate(client_cert_str.c_str());
   mTLSclient.setPrivateKey(client_key_str.c_str());
-
-  if (WiFi.status() == WL_CONNECTED) {
-    WiFiClient client;
-    HTTPClient http;
-    String payload = "";
-
-    http.begin(client, "http://api.ipify.org");
-    int httpResponseCode = http.GET();
-
-    if (httpResponseCode > 0) {
-      Serial.print("HTTP Response code: ");
-      Serial.println(httpResponseCode);
-      payload = http.getString();
-      Serial.print("the server provided this text : ");
-      Serial.println(payload);
-    }
-    else {
-      Serial.print("Error code: ");
-      Serial.println(httpResponseCode);
-    }
-    http.end();
-  }
 }
 
 void loop() {

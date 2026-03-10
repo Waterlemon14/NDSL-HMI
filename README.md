@@ -16,6 +16,14 @@ The system is composed of the following subsystems:
 # Development
 (to add)
 
+## Local
+```
+  cd servers/ca && go run .
+  cd servers/data && go run .
+  cd servers/ra/verification && python manage.py runserver 0.0.0.0:8000
+```
+
+
 # Acknowledgements
 
 This project is being developed to fulfill the final requirements for the attainment of a Bachelor of Science degree in Computer Science under the [Department of Computer Science], [College of Engineering], [University of the Philippines] [Diliman].
