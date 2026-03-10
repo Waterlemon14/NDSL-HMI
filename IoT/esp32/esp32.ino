@@ -34,11 +34,11 @@
 const char* ssid     = "ndsgwifi";
 const char* password = "H1b2idinF2@";
 
-// 13.211.126.142
-const char* serverUrl = "https://13.211.126.142:8443/data";
-const char* signUrl = "https://13.211.126.142:8000/receive-device-data/";
-const char* certDownloadUrl = "https://13.211.126.142:8000/download-cert/";
-const char* renewUrl = "https://13.211.126.142:8000/renew-cert/";
+// 13.239.139.188
+const char* serverUrl = "https://13.239.139.188:8443/data";
+const char* signUrl = "https://13.239.139.188:8000/receive-device-data/";
+const char* certDownloadUrl = "https://13.239.139.188:8000/download-cert/";
+const char* renewUrl = "https://13.239.139.188:8000/renew-cert/";
 
 WiFiClientSecure mTLSclient;
 HTTPClient https;
@@ -325,7 +325,6 @@ void setup() {
     SPIFFS.remove("/client.csr");
     SPIFFS.remove("/client.crt");
     Serial.println("Board credentials reset");
-    while(1);
   }
 
   // 5. Load root CA cert (needed for TLS to RA and data server)

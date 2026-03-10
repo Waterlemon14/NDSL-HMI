@@ -26,15 +26,19 @@
 #include "mbedtls/x509_crt.h"
 
 // ─── Configuration ───────────────────────────────────────────────
-const char* ssid     = "Paella🥘";
-const char* password = "testpasstest";
+// const char* ssid     = "Paella🥘";
+// const char* password = "testpasstest";
 
-const char* serverUrl       = "https://172.20.10.2:8443/data";
-const char* signUrl         = "http://172.20.10.2:8000/receive-device-data/";
-const char* certDownloadUrl = "http://172.20.10.2:8000/download-cert/";
-const char* renewUrl        = "http://172.20.10.2:8000/renew-cert/";
+const char* ssid     = "ndsgwifi";
+const char* password = "H1b2idinF2@";
 
-const int BENCHMARK_ITERATIONS = 100;
+// 13.239.139.188
+const char* serverUrl       = "https://13.239.139.188:8443/data";
+const char* signUrl         = "http://13.239.139.188:8000/receive-device-data/";
+const char* certDownloadUrl = "http://13.239.139.188:8000/download-cert/";
+const char* renewUrl        = "http://13.239.139.188:8000/renew-cert/";
+
+const int BENCHMARK_ITERATIONS = 10000;
 
 // ─── Globals ─────────────────────────────────────────────────────
 String ca_cert_str;
@@ -265,8 +269,10 @@ void benchmarkTLSHandshake() {
   static unsigned long results[BENCHMARK_ITERATIONS];
   Serial.println("\nRunning TLS Handshake benchmark...");
 
-  IPAddress host(172,20,10,2);
-  int port = 8443;
+  // 13.239.139.188
+  IPAddress host(13,239,139,188);
+  // int port = 8443;
+  int port = 8000;
 
   WiFiClientSecure tlsClient;
   tlsClient.setCACert(ca_cert_str.c_str());
@@ -468,9 +474,9 @@ void loop() {
   Serial.printf("Free Heap: %u bytes\n", ESP.getFreeHeap());
 
   // Run all 4 benchmarks sequentially
-  // benchmarkKeyGeneration();
-  // benchmarkTLSHandshake();
-  // benchmarkRenewal();
+  benchmarkKeyGeneration();
+  benchmarkTLSHandshake();
+  benchmarkRenewal();
   benchmarkDataSend();
 
   Serial.println("\n===== BENCHMARK COMPLETE =====\n");
