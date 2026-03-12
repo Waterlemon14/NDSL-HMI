@@ -4,12 +4,12 @@ After=network.target ndsl-ra.service
 
 [Service]
 Type=simple
-User=ndsl
-WorkingDirectory=/opt/ndsl-hmi/servers/data
-ExecStart=/opt/ndsl-hmi/servers/data/data-server
+User=ec2-user
+WorkingDirectory=/opt/ndsl-hmi/data
+ExecStart=/opt/ndsl-hmi/data/data-server
 Restart=on-failure
 RestartSec=5
-EnvironmentFile=/opt/ndsl-hmi/servers/data/.env
+EnvironmentFile=/opt/ndsl-hmi/data/.env
 
 [Install]
 WantedBy=multi-user.target
