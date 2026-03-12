@@ -263,7 +263,7 @@ void benchmarkKeyGeneration() {
 void benchmarkmTLSHandshake() {
   // 51.20.87.204
   IPAddress host(51,20,87,204);
-  int port = 8000;
+  int port = 8443;
 
   for (int i = 0; i < BENCHMARK_ITERATIONS; i++) {
     unsigned long start = millis();
@@ -436,10 +436,11 @@ void loop() {
   Serial.printf("Free Heap: %u bytes\n", ESP.getFreeHeap());
 
   // Run all 4 benchmarks sequentially
-  // benchmarkKeyGeneration();
   benchmarkmTLSHandshake();
   benchmarkRenewal();
   benchmarkDataSend();
+  benchmarkKeyGeneration();
+
 
   Serial.println("\n===== BENCHMARK COMPLETE =====\n");
 
