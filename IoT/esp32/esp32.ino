@@ -298,20 +298,6 @@ void setup() {
   }
   Serial.println("SPIFFS Mounted");
 
-  // 2. Generate key and CSR if key does not exist
-  if (!SPIFFS.exists("/client.key")) generateKeyAndCSR();
-
-  // 3. Connect to WiFi
-  WiFi.begin(ssid, password);
-  while (WiFi.status() != WL_CONNECTED) {
-    delay(1000);
-    Serial.println("Connecting to WiFi...");
-  }
-  Serial.println("Connected to WiFi");
-
-  // 4. Sync Time for Cert Validation
-  setClock();
-
   // Remove previously generated keys and cert if needed
   Serial.print("Normal Operation (0), Reset (1): ");
 
