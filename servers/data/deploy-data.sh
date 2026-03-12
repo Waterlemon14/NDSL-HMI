@@ -15,20 +15,22 @@ go build -o data-server .
 echo "Data server built"
 
 # Generate new keys and certificates for data server
-openssl req -new -nodes -newkey rsa:4096 -keyout data/server.key \
--out server.csr -config server.cnf
-openssl x509 -req -in server.csr -copy_extensions=copy -CA ca/root-ca.crt -CAkey ca/root-ca.key -CAcreateserial -out data/server.crt -days 365 -sha256
-rm -f root-ca.key
-rm -f server.csr
+openssl req -new -nodes -newkey rsa:4096 -keyout $APP_DIR/data/server.key \
+-out $APP_DIR/data/server.csr -config $APP_DIR/data/server.cnf
+openssl x509 -req -in $APP_DIR/data/server.csr -copy_extensions=copy -CA $APP_DIR/data/root-ca.crt -CAkey $APP_DIR/data/root-ca.key -CAcreateserial -out $APP_DIR/data/server.crt -days 365 -sha256
+# rm -f $APP_DIR/data/root-ca.key
+rm -f $APP_DIR/data/server.csr
 
 # Fix ownership and permissions
 chown -R ec2-user:ec2-user "$APP_DIR/data"
 sudo chmod 644 $APP_DIR/data/server.crt
 sudo chmod 644 $APP_DIR/data/server.key
 
+sudo chmod 644 $APP_DIR/data/root-ca.crt
+
 # Install and restart systemd service
 echo "--- Restarting Data service ---"
-cp "$APP_DIR/deploy/ndsl-data.service" /etc/systemd/system/
+cp "$APP_DIR/data/ndsl-data.service" /etc/systemd/system/
 systemctl daemon-reload
 systemctl enable ndsl-data
 systemctl restart ndsl-data

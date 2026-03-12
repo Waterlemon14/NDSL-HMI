@@ -60,7 +60,14 @@ var raClient *http.Client
 
 // initDB connects to Postgres and ensures the received_data table exists.
 func initDB(databaseURL string) error {
-	pool, err := pgxpool.New(context.Background(), databaseURL)
+
+	config, err := pgxpool.ParseConfig(databaseURL)
+	if err != nil {
+		return err
+	}
+	config.ConnConfig.DefaultQueryExecMode = pgx.QueryExecModeSimpleProtocol
+
+	pool, err := pgxpool.NewWithConfig(context.Background(), config)
 	if err != nil {
 		return fmt.Errorf("failed to create connection pool: %w", err)
 	}
@@ -177,7 +184,7 @@ func main() {
 	server := &http.Server{
 		Addr:        ":8443",
 		TLSConfig:   tlsConfig,
-		IdleTimeout: 4 * time.Second,
+		IdleTimeout: 10 * time.Second,
 	}
 
 	http.HandleFunc("/data", dataHandler)
@@ -289,7 +296,7 @@ func checkDeviceState(mac string) (DeviceState, error) {
 }
 
 func reconnectDevice(mac string) error {
-	reconnectURL := fmt.Sprintf("https://localhost:8000/reconnect/%s/", mac)
+	reconnectURL := fmt.Sprintf("https://13.239.57.125:8000/reconnect/%s/", mac)
 
 	req, err := http.NewRequest("GET", reconnectURL, nil)
 	if err != nil {
@@ -328,7 +335,7 @@ func suspendDevice(mac string) error {
 		return err
 	}
 	reqBody := bytes.NewBuffer(jsonData)
-	req, err := http.NewRequest("POST", "https://localhost:8000/report/", reqBody)
+	req, err := http.NewRequest("POST", "https://13.239.57.125:8000/report/", reqBody)
 	if err != nil {
 		log.Printf("Request body read error: %v", err)
 		// http.Error(w, "Internal error", http.StatusInternalServerError)
@@ -368,7 +375,7 @@ func isAnomaly(mac string) (bool, error) {
 	}
 
 	now := time.Now()
-	disconnectTime := lastCreatedAt.Add(10 * time.Second)
+	disconnectTime := lastCreatedAt.Add(120 * time.Second)
 
 	return now.After(disconnectTime), nil
 }

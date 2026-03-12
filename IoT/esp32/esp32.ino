@@ -34,11 +34,11 @@
 const char* ssid     = "ndsgwifi";
 const char* password = "H1b2idinF2@";
 
-// 13.239.139.188
-const char* serverUrl = "https://13.239.139.188:8443/data";
-const char* signUrl = "https://13.239.139.188:8000/receive-device-data/";
-const char* certDownloadUrl = "https://13.239.139.188:8000/download-cert/";
-const char* renewUrl = "https://13.239.139.188:8000/renew-cert/";
+// 13.239.57.125
+const char* serverUrl = "https://51.20.87.204:8443/data";
+const char* signUrl = "https://13.239.57.125:8000/receive-device-data/";
+const char* certDownloadUrl = "https://13.239.57.125:8000/download-cert/";
+const char* renewUrl = "https://13.239.57.125:8000/renew-cert/";
 
 WiFiClientSecure mTLSclient;
 HTTPClient https;
@@ -298,20 +298,6 @@ void setup() {
   }
   Serial.println("SPIFFS Mounted");
 
-  // 2. Generate key and CSR if key does not exist
-  if (!SPIFFS.exists("/client.key")) generateKeyAndCSR();
-
-  // 3. Connect to WiFi
-  WiFi.begin(ssid, password);
-  while (WiFi.status() != WL_CONNECTED) {
-    delay(1000);
-    Serial.println("Connecting to WiFi...");
-  }
-  Serial.println("Connected to WiFi");
-
-  // 4. Sync Time for Cert Validation
-  setClock();
-
   // Remove previously generated keys and cert if needed
   Serial.print("Normal Operation (0), Reset (1): ");
 
@@ -326,6 +312,20 @@ void setup() {
     SPIFFS.remove("/client.crt");
     Serial.println("Board credentials reset");
   }
+
+  // 2. Generate key and CSR if key does not exist
+  if (!SPIFFS.exists("/client.key")) generateKeyAndCSR();
+
+  // 3. Connect to WiFi
+  WiFi.begin(ssid, password);
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(1000);
+    Serial.println("Connecting to WiFi...");
+  }
+  Serial.println("Connected to WiFi");
+
+  // 4. Sync Time for Cert Validation
+  setClock();
 
   // 5. Load root CA cert (needed for TLS to RA and data server)
   ca_cert_str = readFile("/root-ca.crt");
