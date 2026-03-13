@@ -39,6 +39,7 @@ const char* password = "passtest";
 const char* server = "192.168.0.212";
 IPAddress host(192,168,0,212);
 const char* data_server = "https://192.168.0.212:8443/data";
+const char* renewUrl = "https://192.168.0.212:8000/renew-cert/";
 
 const int idport = 8000;
 const int commsport = 8443;
@@ -131,6 +132,7 @@ void printHex(uint8_t* data, size_t len) {
 static int RNG(uint8_t *dest, unsigned size) {
   while (size) {
     *dest = (uint8_t)random(256);
+    // *dest = (uint8_t)rp2040.hwrand32();
     dest++;
     size--;
   }
@@ -255,6 +257,49 @@ void requestCert() {
   // while(1);
 }
 
+bool certExpiresWithinDay() {
+  return false;
+}
+
+void renewCertificate() {
+  Serial.println("Renewing client certificate...");
+
+  String url = String(renewUrl) + WiFi.macAddress() + "/";
+  
+  if (!http.begin(secureclient, url)) {
+    Serial.println("Failed to begin renewal connection");
+    return;
+  }
+
+  http.addHeader("Content-Type", "application/x-pem-file");
+  int httpCode = http.POST(clientCert);
+
+  if (httpCode == 200) {
+    String newCert = http.getString();
+    
+    File certFile = LittleFS.open("/client.crt", "w");
+    if (certFile) {
+      certFile.print(newCert);
+      certFile.close();
+      Serial.println("Certificate saved");
+    } else {
+      Serial.println("Certificate not found");
+    }
+    
+    clientCert = newCert;
+    clientCertList = new BearSSL::X509List(clientCert.c_str());
+    unsigned allowed_usages = BR_KEYTYPE_KEYX | BR_KEYTYPE_SIGN;
+    unsigned cert_issuer_key_type = BR_KEYTYPE_RSA;
+
+    secureclient.setClientECCert(clientCertList, deviceKey, allowed_usages, cert_issuer_key_type);
+    Serial.println("Certificate renewed successfully");
+  } else {
+    Serial.printf("Certificate renewal failed: %d\n", httpCode);
+  }
+
+  http.end();
+}
+
 // --- Memory Cleanup ---
 void clearCerts() {
   if (trustRoot) { delete trustRoot; trustRoot = nullptr; }
@@ -353,6 +398,9 @@ void setup() {
 
 void loop() {
   if (WiFi.status() == WL_CONNECTED) {
+    if (certExpiresWithinDay()) {
+      renewCertificate();
+    }
     Serial.print("Connecting to Data Server... ");
     if (http.begin(secureclient, data_server)) {
       Serial.println("Connected!");
