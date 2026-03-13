@@ -36,6 +36,7 @@ const char* password = "passtest";
 const char* server = "192.168.0.212";
 IPAddress host(192,168,0,212);
 const char* data_server = "https://192.168.0.212:8443/data";
+const char* renewUrl = "https://192.168.0.212:8000/renew-cert/";
 
 const int idport = 8000;
 const int commsport = 8443;
@@ -54,6 +55,49 @@ uint8_t key_der[121];
 BearSSL::X509List* trustRoot = nullptr;
 BearSSL::X509List* clientCertList = nullptr;
 BearSSL::PrivateKey* deviceKey = nullptr;
+
+bool certExpiresWithinDay() {
+  return false;
+}
+
+void renewCertificate() {
+  Serial.println("Renewing client certificate...");
+
+  String url = String(renewUrl) + WiFi.macAddress() + "/";
+  
+  if (!http.begin(secureclient, url)) {
+    Serial.println("Failed to begin renewal connection");
+    return;
+  }
+
+  http.addHeader("Content-Type", "application/x-pem-file");
+  int httpCode = http.POST(clientCert);
+
+  if (httpCode == 200) {
+    String newCert = http.getString();
+    
+    File certFile = LittleFS.open("/client.crt", "w");
+    if (certFile) {
+      certFile.print(newCert);
+      certFile.close();
+      Serial.println("Certificate saved");
+    } else {
+      Serial.println("Certificate not found");
+    }
+    
+    clientCert = newCert;
+    clientCertList = new BearSSL::X509List(clientCert.c_str());
+    unsigned allowed_usages = BR_KEYTYPE_KEYX | BR_KEYTYPE_SIGN;
+    unsigned cert_issuer_key_type = BR_KEYTYPE_RSA;
+
+    secureclient.setClientECCert(clientCertList, deviceKey, allowed_usages, cert_issuer_key_type);
+    Serial.println("Certificate renewed successfully");
+  } else {
+    Serial.printf("Certificate renewal failed: %d\n", httpCode);
+  }
+
+  http.end();
+}
 
 void setup() {
   // put your setup code here, to run once:
