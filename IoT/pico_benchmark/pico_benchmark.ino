@@ -10,13 +10,14 @@
 const char* ssid     = "test";
 const char* password = "passtest";
 
-const char* server   = "192.168.0.212";
-IPAddress host(192, 168, 0, 212);
-const char* data_url    = "https://192.168.0.212:8443/data";
-const int idport       = 8000;
+IPAddress host(51, 20, 87, 204);
+const char* data_url    = "https://51.20.87.204:8443/data";
+const char* signUrl = "https://13.239.57.125:8000/receive-device-data/";
+const char* certDownloadUrl = "https://13.239.57.125:8000/download-cert/";
+const char* renewUrl = "https://13.239.57.125:8000/renew-cert/";
 const int commsport    = 8443;
 
-const int BENCHMARK_ITERATIONS = 1000;
+const int BENCHMARK_ITERATIONS = 10;
 
 // ─── Globals ─────────────────────────────────────────────────────
 uint8_t sk[32];
@@ -24,6 +25,7 @@ uint8_t pk[64];
 String caCert;
 String clientCert;
 uint8_t key_der[121];
+unsigned long expiration;
 
 BearSSL::X509List* trustRoot = nullptr;
 BearSSL::X509List* clientCertList = nullptr;
@@ -42,6 +44,7 @@ bool benchmarkDone = false;
 static int RNG(uint8_t *dest, unsigned size) {
   while (size) {
     *dest = (uint8_t)random(256);
+    // *dest = (uint8_t)rp2040.hwrand32();
     dest++;
     size--;
   }
@@ -118,6 +121,39 @@ void benchmarkDataSend() {
       secureclient.stop();
     }
     delay(10);
+  }
+}
+
+// ─── Benchmark 4: Certificate Renewal ────────────────────────────
+void benchmarkRenewal() {
+  String url = String(renewUrl) + WiFi.macAddress() + "/";
+
+  for (int i = 0; i < BENCHMARK_ITERATIONS; i++) {
+    HTTPClient http;
+    secureclient.stop();
+    http.addHeader("Content-Type", "application/x-pem-file");
+
+    unsigned long start = millis();
+    int httpCode = http.POST(clientCert);
+    String newCert = http.getString();
+    unsigned long elapsed = millis() - start;
+
+    if (httpCode == 200) {
+      clientCert = newCert;
+      Serial.printf("CertificateRenewal,%d,%lu,SUCCESS\n", i + 1, elapsed);
+    } else {
+      Serial.printf("CertificateRenewal,%d,%lu,FAILED\n", i + 1, elapsed);
+    }
+    http.end();
+    delay(100);
+  }
+  File certFile = LittleFS.open("/client.crt", "w");
+  if (certFile) {
+    certFile.print(clientCert);
+    certFile.close();
+    Serial.println("Certificate saved");
+  } else {
+    Serial.println("Certificate not found");
   }
 }
 
@@ -209,6 +245,18 @@ void setup() {
     }
   }
 
+  // Prepare BearSSL Structures (The key_der wrapping you implemented)
+  uint8_t head[] = {0x30, 0x77, 0x02, 0x01, 0x01, 0x04, 0x20};
+  uint8_t mid[]  = {0xa0, 0x0a, 0x06, 0x08, 0x2a, 0x86, 0x48, 0xce, 0x3d, 0x03, 0x01, 0x07, 0xa1, 0x44, 0x03, 0x42, 0x00, 0x04};
+  memcpy(key_der, head, 7);
+  memcpy(key_der + 7, sk, 32);
+  memcpy(key_der + 39, mid, 18);
+  memcpy(key_der + 57, pk, 64);
+  
+  deviceKey = new BearSSL::PrivateKey(key_der, 121);
+  trustRoot = new BearSSL::X509List(caCert.c_str());
+  secureclient.setTrustAnchors(trustRoot);
+
   // Ensure device has certificate
   if (LittleFS.exists("/client.crt")){
     File certFile = LittleFS.open("/client.crt", "r");
@@ -233,24 +281,32 @@ void setup() {
     serializeJson(doc, jsonPayload);
 
     int responsecode = 0;
-    http.begin(client, server, idport, "/receive-device-data/");
     while (responsecode != 202){
-      Serial.println("Sending device data...");
-      http.addHeader("Content-Type", "application/json");
-      responsecode = http.POST(jsonPayload);
-      Serial.println(responsecode);
+      secureclient.stop();
+      delay(100);
+      if(http.begin(secureclient, signUrl)){
+        Serial.println("Sending device data...");
+        http.addHeader("Content-Type", "application/json");
+        responsecode = http.POST(jsonPayload);
+        Serial.println(responsecode);
+        http.end();
+      } else{
+        Serial.println("Http connection failed!");
+      }
       delay(10000);
     }
-    http.end();
 
     responsecode = 0;
     while (responsecode != 200){
       delay(10000);
       Serial.println("Waiting for certificate...");
-      http.begin(client, server, idport, "/download-cert/" + WiFi.macAddress() + "/");
+      http.begin(secureclient, certDownloadUrl + WiFi.macAddress() + "/");
+      const char* headerKeys[] = {"X-Cert-Expires-At"};
+      http.collectHeaders(headerKeys, 1);
       responsecode = http.GET();
       if (responsecode == 200){
         clientCert = http.getString();
+        expiration = http.header("X-Cert-Expires-At").toInt();
       }
       http.end();
     }
@@ -264,20 +320,9 @@ void setup() {
     }
   }
 
-  // Prepare BearSSL Structures (The key_der wrapping you implemented)
-  uint8_t head[] = {0x30, 0x77, 0x02, 0x01, 0x01, 0x04, 0x20};
-  uint8_t mid[]  = {0xa0, 0x0a, 0x06, 0x08, 0x2a, 0x86, 0x48, 0xce, 0x3d, 0x03, 0x01, 0x07, 0xa1, 0x44, 0x03, 0x42, 0x00, 0x04};
-  memcpy(key_der, head, 7);
-  memcpy(key_der + 7, sk, 32);
-  memcpy(key_der + 39, mid, 18);
-  memcpy(key_der + 57, pk, 64);
-  
-  deviceKey = new BearSSL::PrivateKey(key_der, 121);
-  trustRoot = new BearSSL::X509List(caCert.c_str());
   clientCertList = new BearSSL::X509List(clientCert.c_str());
 
   secureclient.setBufferSizes(1024, 1024);
-  secureclient.setTrustAnchors(trustRoot);
   secureclient.setClientECCert(clientCertList, deviceKey, BR_KEYTYPE_KEYX | BR_KEYTYPE_SIGN, BR_KEYTYPE_RSA);
 
   Serial.println("\nPrerequisites complete. Starting benchmarks...\n");
@@ -290,6 +335,7 @@ void loop() {
   benchmarkKeyGeneration();
   benchmarkTLSHandshake();
   benchmarkDataSend();
+  benchmarkRenewal();
   Serial.println("===== BENCHMARK COMPLETE =====");
 
   benchmarkDone = true;

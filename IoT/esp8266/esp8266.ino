@@ -26,18 +26,10 @@ const char* password = "passtest";
 // const char* password = "H1b2idinF2@";
 
 // Servers
-// const char* server = "172.20.10.2";
-// IPAddress host(172,20,10,2);
-// const char* data_server = "https://172.20.10.2:8443/data";
-
-// const char* server = "172.16.199.223";
-// IPAddress host(172,16,199,223);
-// const char* data_server = "https://172.16.199.223:8443/data";
-
-const char* server = "192.168.0.212";
-IPAddress host(192,168,0,212);
-const char* data_server = "https://192.168.0.212:8443/data";
-const char* renewUrl = "https://192.168.0.212:8000/renew-cert/";
+const char* serverUrl = "https://51.20.87.204:8443/data";
+const char* signUrl = "https://13.239.57.125:8000/receive-device-data/";
+const char* certDownloadUrl = "https://13.239.57.125:8000/download-cert/";
+const char* renewUrl = "https://13.239.57.125:8000/renew-cert/";
 
 const int idport = 8000;
 const int commsport = 8443;
@@ -52,13 +44,20 @@ uint8_t pk[64];
 String caCert;
 String clientCert;
 uint8_t key_der[121];
+unsigned long expiration;
 
 BearSSL::X509List* trustRoot = nullptr;
 BearSSL::X509List* clientCertList = nullptr;
 BearSSL::PrivateKey* deviceKey = nullptr;
 
 bool certExpiresWithinDay() {
-  return false;
+  time_t expire_time = (time_t)expiration;
+  time_t current_time = time(nullptr);
+
+  double remaining = difftime(expire_time, current_time);
+  Serial.printf("Cert expires in %.0f seconds\n", remaining);
+
+  return remaining < 86400;
 }
 
 void renewCertificate() {
@@ -85,7 +84,7 @@ void renewCertificate() {
     } else {
       Serial.println("Certificate not found");
     }
-    
+
     clientCert = newCert;
     clientCertList = new BearSSL::X509List(clientCert.c_str());
     unsigned allowed_usages = BR_KEYTYPE_KEYX | BR_KEYTYPE_SIGN;
@@ -171,64 +170,7 @@ void setup() {
   Serial.print("MAC address: ");
   Serial.println(WiFi.macAddress());
 
-  // Check for certificate, request if not present
-  if (!LittleFS.exists("/client.crt")){
-    Serial.println("Requesting certificate...");
-    char pkbuffer[131];
-    sprintf(pkbuffer, "04");
-    for (int i = 0; i < 64; i++) {
-        sprintf(pkbuffer + 2 + (i * 2), "%02x", pk[i]);
-    }
-
-    JsonDocument doc;
-    doc["IP"] = ip.toString();
-    doc["MAC"] = WiFi.macAddress();
-    doc["PublicKey"] = pkbuffer;
-    String jsonPayload;
-    serializeJson(doc, jsonPayload);
-
-    int responsecode = 0;
-    while (responsecode != 202){
-      if(http.begin(client, server, idport, "/receive-device-data/")){
-        Serial.println("Sending device data...");
-        http.addHeader("Content-Type", "application/json");
-        responsecode = http.POST(jsonPayload);
-        Serial.println(responsecode);
-        http.end();
-      } else{
-        Serial.println("Http connection failed!");
-      }
-      delay(10000);
-    }
-
-    responsecode = 0;
-    while (responsecode != 200){
-      delay(10000);
-      Serial.println("Waiting for certificate...");
-      http.begin(client, server, idport, "/download-cert/" + WiFi.macAddress() + "/");
-      responsecode = http.GET();
-      if (responsecode == 200){
-        clientCert = http.getString();
-      }
-      http.end();
-    }
-    File certFile = LittleFS.open("/client.crt", "w");
-    if (certFile) {
-      certFile.print(clientCert);
-      certFile.close();
-      Serial.println("Certificate saved");
-    } else {
-      Serial.println("Certificate not found");
-    }
-  } else {
-    File certFile = LittleFS.open("/client.crt", "r");
-    if (certFile) {
-      clientCert = certFile.readString();
-      certFile.close();
-      Serial.println("Client certificate loaded");
-    }
-  }
-
+  // Check for CA certificate
   if (LittleFS.exists("/root-ca.crt")){
     Serial.println("Loading CA certificate...");
     File caFile = LittleFS.open("/root-ca.crt", "r");
@@ -236,11 +178,6 @@ void setup() {
       caCert = caFile.readString();
       caFile.close();
       Serial.println("CA certificate loaded");
-    }
-
-    if (client.connected()) {
-      client.stop();
-      Serial.println("Closed connection to idserver");
     }
 
     configTime(0, 0, "pool.ntp.org", "time.nist.gov");
@@ -259,7 +196,73 @@ void setup() {
     Serial.print(F("Current time: "));
     Serial.print(asctime(&timeinfo));
 
-    
+
+    trustRoot = new BearSSL::X509List(caCert.c_str());
+
+    secureclient.setBufferSizes(1024, 1024);
+    secureclient.setTrustAnchors(trustRoot);
+
+    Serial.print("CA Cert Length: ");
+    Serial.println(caCert.length());
+  } else {
+    Serial.println("No CA certificate found");
+  }
+
+  // Check for certificate, request if not present
+  if (!LittleFS.exists("/client.crt")){
+    Serial.println("Requesting certificate...");
+    char pkbuffer[131];
+    sprintf(pkbuffer, "04");
+    for (int i = 0; i < 64; i++) {
+        sprintf(pkbuffer + 2 + (i * 2), "%02x", pk[i]);
+    }
+
+    JsonDocument doc;
+    doc["IP"] = ip.toString();
+    doc["MAC"] = WiFi.macAddress();
+    doc["PublicKey"] = pkbuffer;
+    String jsonPayload;
+    serializeJson(doc, jsonPayload);
+
+    int responsecode = 0;
+    while (responsecode != 202){
+      secureclient.stop();
+      delay(100);
+      if(http.begin(secureclient, signUrl)){
+        Serial.println("Sending device data...");
+        http.addHeader("Content-Type", "application/json");
+        responsecode = http.POST(jsonPayload);
+        Serial.println(responsecode);
+        http.end();
+      } else{
+        Serial.println("Http connection failed!");
+      }
+      delay(10000);
+    }
+
+    responsecode = 0;
+    while (responsecode != 200){
+      delay(10000);
+      Serial.println("Waiting for certificate...");
+      http.begin(secureclient, certDownloadUrl + WiFi.macAddress() + "/");
+      const char* headerKeys[] = {"X-Cert-Expires-At"};
+      http.collectHeaders(headerKeys, 1);
+      responsecode = http.GET();
+      if (responsecode == 200){
+        clientCert = http.getString();
+        expiration = http.header("X-Cert-Expires-At").toInt();
+      }
+      http.end();
+    }
+    File certFile = LittleFS.open("/client.crt", "w");
+    if (certFile) {
+      certFile.print(clientCert);
+      certFile.close();
+      Serial.println("Certificate saved");
+    } else {
+      Serial.println("Certificate not found");
+    }
+
     uint8_t head[] = {0x30, 0x77, 0x02, 0x01, 0x01, 0x04, 0x20};
     uint8_t mid[]  = {0xa0, 0x0a, 0x06, 0x08, 0x2a, 0x86, 0x48, 0xce, 0x3d, 0x03, 0x01, 0x07, 0xa1, 0x44, 0x03, 0x42, 0x00, 0x04};
 
@@ -269,35 +272,28 @@ void setup() {
     memcpy(key_der + 57, pk, 64);
     deviceKey = new BearSSL::PrivateKey(key_der, 121);
 
-    trustRoot = new BearSSL::X509List(caCert.c_str());
     clientCertList = new BearSSL::X509List(clientCert.c_str());
-    // deviceKey = new BearSSL::PrivateKey(sk, 32);
     unsigned allowed_usages = BR_KEYTYPE_KEYX | BR_KEYTYPE_SIGN;
     unsigned cert_issuer_key_type = BR_KEYTYPE_RSA;
-    secureclient.setBufferSizes(1024, 1024);
-    secureclient.setTrustAnchors(trustRoot);
     secureclient.setClientECCert(clientCertList, deviceKey, allowed_usages, cert_issuer_key_type);
-
-    Serial.print("CA Cert Length: ");
-    Serial.println(caCert.length());
-    Serial.print("Client Cert Length: ");
-    Serial.println(clientCert.length());
-    Serial.print("Checking sk alignment: ");
-    for (int i = 0; i < 32; i++) {
-        if (sk[i] < 16) Serial.print("0");
-        Serial.print(sk[i], HEX);
-    }
-    Serial.println();
   } else {
-    Serial.println("No CA certificate found");
+    File certFile = LittleFS.open("/client.crt", "r");
+    if (certFile) {
+      clientCert = certFile.readString();
+      certFile.close();
+      Serial.println("Client certificate loaded");
+    }
   }
 }
 
 void loop() {
   // put your main code here, to run repeatedly:
   if (WiFi.status() == WL_CONNECTED) {
+    if (certExpiresWithinDay()) {
+      renewCertificate();
+    }
     HTTPClient http;
-    if (http.begin(secureclient, data_server)) {
+    if (http.begin(secureclient, serverUrl)) {
       http.addHeader("Content-Type", "application/json");
 
       StaticJsonDocument<200> doc;
