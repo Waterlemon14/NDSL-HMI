@@ -2,14 +2,18 @@
           MULTI-DEVICE BENCHMARK REPORT           
 ==================================================
 
-                      Avg (ms)  Min (ms)  Max (ms)  Samples
-Device  TestType                                           
-ESP8266 DataSend       2155.32      1567      8377     1000
-        KeyGen         3137.93       873      9834     1000
-        TLSHandshake   1640.41      1406     10038     1000
-PICO    DataSend       2171.21      1699      4306     1000
-        KeyGen           81.76        81        83     1000
-        TLSHandshake   1874.60      1487     15149     1000
+                            Avg (ms)  Min (ms)  Max (ms)  Samples
+Device  TestType                                                 
+ESP32   CertificateRenewal   2731.42      2123     11031    10017
+        DataSend             1081.23       764     69350    10039
+        KeyGen                150.08       149       151    10000
+        mTLSHandshake        1776.64      1249     68135    10002
+ESP8266 DataSend             2155.32      1567      8377     1000
+        KeyGen               3137.93       873      9834     1000
+        TLSHandshake         1640.41      1406     10038     1000
+PICO    DataSend             2171.21      1699      4306     1000
+        KeyGen                 81.76        81        83     1000
+        TLSHandshake         1874.60      1487     15149     1000
 
 ==================================================
-Report Generated: 2026-03-07 21:14:49.893046
+Report Generated: 2026-03-16 14:43:18.123792
