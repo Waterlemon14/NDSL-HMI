@@ -1,6 +1,8 @@
 import json
 import requests
+import math
 from pathlib import Path
+from cryptography import x509
 
 from django.http import HttpResponse
 from django.views.decorators.csrf import csrf_exempt
@@ -74,7 +76,11 @@ def receive_device_data(request):
 def download_cert(request, mac_address):
     device = Device.objects.get(mac=mac_address)
     if device.certificate:
-        return HttpResponse(device.certificate, content_type="application/x-pem-file")
+        cert = x509.load_pem_x509_certificate(device.certificate.encode('utf-8'))
+        expiration = math.floor(cert.not_valid_after_utc.timestamp())
+        response = HttpResponse(device.certificate, content_type="application/x-pem-file")
+        response['X-Cert-Expires-At'] = str(expiration)
+        return response
 
     elif device.challengeCount == CHALLENGE_COUNT_THRESHOLD:
         if device.public_key:
@@ -148,7 +154,11 @@ def renew_cert(request, mac_address):
     if ca_response.status_code == 200:
         device.certificate = ca_response.text
         device.save()
-        return HttpResponse(device.certificate, content_type="application/x-pem-file")
+        cert = x509.load_pem_x509_certificate(device.certificate.encode('utf-8'))
+        expiration = math.floor(cert.not_valid_after_utc.timestamp())
+        response = HttpResponse(device.certificate, content_type="application/x-pem-file")
+        response['X-Cert-Expires-At'] = str(expiration)
+        return response
 
     print("CA renew error:", ca_response.status_code, ca_response.text)
     return HttpResponse(ca_response.text, status=ca_response.status_code)
