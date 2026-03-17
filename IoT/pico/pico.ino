@@ -251,6 +251,7 @@ int requestCert() {
       expiration = https.header("X-Cert-Expires-At").toInt();
       Serial.println("Certificate signed successfully!");
       writeFile("/client.crt", clientCert.c_str());
+      writeFile("/expiration.txt", String(expiration).c_str());
     }
     Serial.printf("Error sending data: %d - %s\n",
                   responsecode, https.errorToString(responsecode).c_str());
@@ -281,11 +282,15 @@ void renewCertificate() {
   }
 
   https.addHeader("Content-Type", "application/x-pem-file");
+  const char* headerKeys[] = {"X-Cert-Expires-At"};
+  https.collectHeaders(headerKeys, 1);
   int httpCode = https.POST(clientCert);
 
   if (httpCode == 200) {
     String newCert = https.getString();
+    expiration = https.header("X-Cert-Expires-At").toInt();
     writeFile("/client.crt", newCert.c_str());
+    writeFile("/expiration.txt", String(expiration).c_str());
     clientCert = newCert;
     clientCertList = new BearSSL::X509List(clientCert.c_str());
     unsigned allowed_usages = BR_KEYTYPE_KEYX | BR_KEYTYPE_SIGN;
@@ -323,6 +328,7 @@ void setup() {
     LittleFS.remove("/private.key");
     LittleFS.remove("/public.key");
     LittleFS.remove("/client.crt");
+    LittleFS.remove("/expiration.txt");
     Serial.println("Board credentials reset");
   }
 
@@ -373,10 +379,11 @@ void setup() {
   http.end();
 
   // 7. Request client cert if not found
-  if (!LittleFS.exists("/client.crt")) requestCert();
+  if (!LittleFS.exists("/client.crt") || !LittleFS.exists("/expiration.txt")) requestCert();
 
-  // 8. Load client cert
+  // 8. Load client cert and expiration
   clientCert = readFile("/client.crt");
+  expiration = readFile("/expiration.txt").toInt();
 
   if (clientCert == "") {
     Serial.println("CRITICAL ERROR: Could not load certificate!");
