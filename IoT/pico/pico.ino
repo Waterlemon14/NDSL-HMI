@@ -15,8 +15,9 @@
 // Synchronization
 #include <time.h>
 
-// Security packages 
+// Security packages
 #include <uECC.h>
+
 // Wifi credentials
 const char* ssid     = "test";
 const char* password = "passtest";
@@ -33,18 +34,16 @@ const char* signUrl = "https://13.239.57.125:8000/receive-device-data/";
 const char* certDownloadUrl = "https://13.239.57.125:8000/download-cert/";
 const char* renewUrl = "https://13.239.57.125:8000/renew-cert/";
 
-const int idport = 8000;
-const int commsport = 8443;
-
-WiFiClient client;
 WiFiClientSecure secureclient;
-HTTPClient http;
-IPAddress ip;
+HTTPClient https;
+
+// Globals to hold certificate data in memory
+String caCert;
+String clientCert;
+String publicIP;
 
 uint8_t sk[32];
 uint8_t pk[64];
-String caCert;
-String clientCert;
 uint8_t key_der[121];
 unsigned long expiration;
 
@@ -58,9 +57,42 @@ time_t now;
 JsonDocument doc;
 String data;
 
+// --- RNG for micro-ecc ---
+static int RNG(uint8_t *dest, unsigned size) {
+  while (size) {
+    *dest = (uint8_t)random(256);
+    dest++;
+    size--;
+  }
+  return 1;
+}
+
+void printHex(uint8_t* data, size_t len) {
+  for (size_t i = 0; i < len; i++) {
+    if (data[i] < 0x10) Serial.print("0");
+    Serial.print(data[i], HEX);
+  }
+  Serial.println();
+}
+
 // File System Helpers
-  // byte-array for keys
-int readFile(const char* path, uint8_t* destination, size_t len) {
+String readFile(const char* path) {
+  Serial.printf("Reading file: %s\n", path);
+
+  File file = LittleFS.open(path, "r");
+  if (!file) {
+    Serial.println("  - Failed to open file for reading");
+    return "";
+  }
+
+  String fileContent = file.readString();
+  file.close();
+
+  Serial.printf("  - Read %d bytes\n", fileContent.length());
+  return fileContent;
+}
+
+int readBinaryFile(const char* path, uint8_t* destination, size_t len) {
   Serial.printf("Reading file: %s\n", path);
   File file = LittleFS.open(path, "r");
   if (!file) {
@@ -81,72 +113,36 @@ int readFile(const char* path, uint8_t* destination, size_t len) {
   return 0;
 }
 
-  // String for certs
-String readStringFile(const char* path) {
-  Serial.printf("Reading file: %s\n", path);
-  File file = LittleFS.open(path, "r");
-  if (!file) {
-    Serial.println("  - Failed to open file for reading");
-    return "";
-  }
-
-  String content = file.readString();
-  file.close();
-
-  Serial.printf("  - Read %d bytes\n", content.length());
-  return content;
-}
-
-int writeFile(const char* path, const uint8_t* content, int len) {
+void writeFile(const char* path, const char* content) {
   File file = LittleFS.open(path, "w");
   if (!file) {
     Serial.printf("Failed to open %s for writing\n", path);
-    return -1;
+    return;
+  }
+  if (file.print(content)) {
+    Serial.printf("File saved: %s\n", path);
+  } else {
+    Serial.println("Write failed");
+  }
+  file.close();
+}
+
+void writeBinaryFile(const char* path, const uint8_t* content, int len) {
+  File file = LittleFS.open(path, "w");
+  if (!file) {
+    Serial.printf("Failed to open %s for writing\n", path);
+    return;
   }
   file.write(content, len);
   file.close();
-
   Serial.printf("File saved: %s\n", path);
-  return 0;
 }
 
-// --- Helper: Print Hex ---
-void printHex(uint8_t* data, size_t len) {
-  for (size_t i = 0; i < len; i++) {
-    if (data[i] < 0x10) Serial.print("0");
-    Serial.print(data[i], HEX);
-  }
-  Serial.println();
-}
-
-// --- RNG for micro-ecc ---
-// The RP2040 has a hardware random number generator used by the WiFi stack.
-// We wrap the Arduino 'random' which is seeded by HW on this core.
-static int RNG(uint8_t *dest, unsigned size) {
-  while (size) {
-    *dest = (uint8_t)random(256);
-    // *dest = (uint8_t)rp2040.hwrand32();
-    dest++;
-    size--;
-  }
-  return 1;
-}
-
-// Generates key pair if keys and client cert are not found
 void generateKeyPair() {
-  if (LittleFS.exists("/private.key") && LittleFS.exists("/public.key") && LittleFS.exists("/client.key")) {
-    Serial.println("Keys and client cert exist");
-    return;
-  }
-
-  Serial.println("Creating ecc key pair");
+  Serial.println("Creating ECC key pair...");
   uECC_set_rng(&RNG);
-  Serial.println("RNG set");
-
   const struct uECC_Curve_t* curve = uECC_secp256r1();
 
-  // Determine key sizes
-  // secp256r1: Private key = 32 bytes, Public key = 64 bytes
   if (uECC_make_key(pk, sk, curve)) {
     Serial.println("Successfully generated key pair!");
     Serial.print("Private: ");
@@ -154,99 +150,114 @@ void generateKeyPair() {
     Serial.print("Public: ");
     printHex(pk, 64);
 
-    writeFile("/private.key", sk, 32);
-    writeFile("/public.key", pk, 64);
+    writeBinaryFile("/private.key", sk, 32);
+    writeBinaryFile("/public.key", pk, 64);
+
+    Serial.println("Keys saved");
   } else {
-    Serial.println("Failed to generate keys!");
+    Serial.println("Failed to generate key pair!");
     while(1) delay(1000);
   }
+}
+
+void setupDeviceKey() {
+  uint8_t head[] = {0x30, 0x77, 0x02, 0x01, 0x01, 0x04, 0x20};
+  uint8_t mid[]  = {0xa0, 0x0a, 0x06, 0x08, 0x2a, 0x86, 0x48, 0xce, 0x3d, 0x03, 0x01, 0x07, 0xa1, 0x44, 0x03, 0x42, 0x00, 0x04};
+
+  memset(key_der, 0, 121);
+  memcpy(key_der, head, 7);
+  memcpy(key_der + 7, sk, 32);
+  memcpy(key_der + 39, mid, 18);
+  memcpy(key_der + 57, pk, 64);
+  deviceKey = new BearSSL::PrivateKey(key_der, 121);
 }
 
 // Synch Helper
 void setClock() {
   configTime(0, 0, "pool.ntp.org", "time.nist.gov");
 
-  Serial.print("Waiting for NTP time sync: ");
-  time_t nowSecs = time(nullptr);
-  while (nowSecs < 8 * 3600 * 2) {
+  Serial.print(F("Waiting for NTP time sync: "));
+  now = time(nullptr);
+  while (now < 8 * 3600 * 2) {
     delay(500);
-    Serial.print(".");
-    nowSecs = time(nullptr);
+    Serial.print(F("."));
+    now = time(nullptr);
   }
   Serial.println();
 
-  gmtime_r(&nowSecs, &timeinfo);
-  Serial.print("Current time: ");
+  gmtime_r(&now, &timeinfo);
+  Serial.print(F("Current time: "));
   Serial.print(asctime(&timeinfo));
 }
 
-// Request client cert if not existing
-void requestCert() {
-  // Reload key if they aren't in memory (e.g. after reboot)
-  readFile("/public.key", pk, 64);
-  
-  IPAddress ip = WiFi.localIP();
+int requestCert() {
+  // Reload keys if they aren't in memory (e.g. after reboot)
+  readBinaryFile("/public.key", pk, 64);
 
-  Serial.print("IP address: ");
-  Serial.println(ip);
+  Serial.print("Public IP: ");
+  Serial.println(publicIP);
   Serial.print("MAC address: ");
   Serial.println(WiFi.macAddress());
-  
-  Serial.println("Connected to id server...");
-  
-  // Convert Raw Public Key to Hex String
+
+  // Format public key as hex string
   char pkbuffer[131];
-  sprintf(pkbuffer, "04"); // Uncompressed point indicator
+  sprintf(pkbuffer, "04");
   for (int i = 0; i < 64; i++) {
     sprintf(pkbuffer + 2 + (i * 2), "%02x", pk[i]);
   }
 
+  Serial.printf("Requesting certificate from %s...\n", signUrl);
+
   JsonDocument doc;
-  doc["IP"] = ip.toString();
+  doc["IP"] = publicIP;
   doc["MAC"] = WiFi.macAddress();
   doc["PublicKey"] = pkbuffer;
   String jsonPayload;
   serializeJson(doc, jsonPayload);
 
-  // Send Connect to csr server
+  // Device Auth Checkpoint
   int responsecode = 0;
-  while (responsecode != 202){
+
+  while (responsecode != 202) {
     secureclient.stop();
     delay(100);
-    if(http.begin(secureclient, signUrl)){
+    if (https.begin(secureclient, signUrl)) {
       Serial.println("Sending device data...");
-      http.addHeader("Content-Type", "application/json");
-      responsecode = http.POST(jsonPayload);
+      https.addHeader("Content-Type", "application/json");
+      responsecode = https.POST(jsonPayload);
       Serial.println(responsecode);
-      http.end();
-    } else{
-      Serial.println("Http connection failed!");
+
+      Serial.printf("Error sending data: %d - %s\n",
+                    responsecode, https.errorToString(responsecode).c_str());
+      https.end();
+    } else {
+      Serial.println("HTTP connection failed!");
     }
     delay(10000);
   }
 
+  // Device Authenticated
   responsecode = 0;
-  while (responsecode != 200){
+
+  while (responsecode != 200) {
     delay(10000);
     Serial.println("Waiting for certificate...");
-    http.begin(secureclient, certDownloadUrl + WiFi.macAddress() + "/");
+    https.begin(secureclient, certDownloadUrl + WiFi.macAddress() + "/");
     const char* headerKeys[] = {"X-Cert-Expires-At"};
-    http.collectHeaders(headerKeys, 1);
-    responsecode = http.GET();
-    if (responsecode == 200){
-      clientCert = http.getString();
-      expiration = http.header("X-Cert-Expires-At").toInt();
+    https.collectHeaders(headerKeys, 1);
+    responsecode = https.GET();
+    if (responsecode == 200) {
+      clientCert = https.getString();
+      expiration = https.header("X-Cert-Expires-At").toInt();
+      Serial.println("Certificate signed successfully!");
+      writeFile("/client.crt", clientCert.c_str());
     }
-    http.end();
+    Serial.printf("Error sending data: %d - %s\n",
+                  responsecode, https.errorToString(responsecode).c_str());
+    https.end();
   }
-  File certFile = LittleFS.open("/client.crt", "w");
-  if (certFile) {
-    certFile.print(clientCert);
-    certFile.close();
-    Serial.println("Certificate saved");
-  } else {
-    Serial.println("Certificate not found");
-  }
+
+  return 0;
 }
 
 bool certExpiresWithinDay() {
@@ -263,191 +274,155 @@ void renewCertificate() {
   Serial.println("Renewing client certificate...");
 
   String url = String(renewUrl) + WiFi.macAddress() + "/";
-  
-  if (!http.begin(secureclient, url)) {
+
+  if (!https.begin(secureclient, url)) {
     Serial.println("Failed to begin renewal connection");
     return;
   }
 
-  http.addHeader("Content-Type", "application/x-pem-file");
-  int httpCode = http.POST(clientCert);
+  https.addHeader("Content-Type", "application/x-pem-file");
+  int httpCode = https.POST(clientCert);
 
   if (httpCode == 200) {
-    String newCert = http.getString();
-    
-    File certFile = LittleFS.open("/client.crt", "w");
-    if (certFile) {
-      certFile.print(newCert);
-      certFile.close();
-      Serial.println("Certificate saved");
-    } else {
-      Serial.println("Certificate not found");
-    }
-    
+    String newCert = https.getString();
+    writeFile("/client.crt", newCert.c_str());
     clientCert = newCert;
     clientCertList = new BearSSL::X509List(clientCert.c_str());
     unsigned allowed_usages = BR_KEYTYPE_KEYX | BR_KEYTYPE_SIGN;
     unsigned cert_issuer_key_type = BR_KEYTYPE_RSA;
-
     secureclient.setClientECCert(clientCertList, deviceKey, allowed_usages, cert_issuer_key_type);
     Serial.println("Certificate renewed successfully");
   } else {
     Serial.printf("Certificate renewal failed: %d\n", httpCode);
   }
 
-  http.end();
-}
-
-// --- Memory Cleanup ---
-void clearCerts() {
-  if (trustRoot) { delete trustRoot; trustRoot = nullptr; }
-  if (clientCertList) { delete clientCertList; clientCertList = nullptr; }
-  if (deviceKey) { delete deviceKey; deviceKey = nullptr; }
+  https.end();
 }
 
 void setup() {
   Serial.begin(115200);
   delay(2000);
   while(!Serial);
-  
-  // 1. Mount File System
-  if(!LittleFS.begin()) {
-    Serial.println("LittleFS Mount Failed. Did you select a Flash Size with FS?");
+
+  // 1. Mount LittleFS
+  if (!LittleFS.begin()) {
+    Serial.println("An Error has occurred while mounting LittleFS");
     return;
   }
+  Serial.println("LittleFS Mounted");
 
   // Remove previously generated keys and cert if needed
-
   Serial.print("Normal Operation (0), Reset (1): ");
 
   while (Serial.available() == 0) {
   }
 
-  int mode = Serial.parseInt(); 
+  int mode = Serial.parseInt();
 
   if (mode == RESET) {
     LittleFS.remove("/private.key");
     LittleFS.remove("/public.key");
     LittleFS.remove("/client.crt");
     Serial.println("Board credentials reset");
-    while(1);
   }
 
-  // 2. Generate keys if not found or initial boot
-  if (!LittleFS.exists("/private.key") || !LittleFS.exists("/public.key")) generateKeyPair();
-  
+  // 2. Generate key pair if keys do not exist
+  if (!LittleFS.exists("/private.key") || !LittleFS.exists("/public.key")) {
+    generateKeyPair();
+  } else {
+    Serial.println("Loading existing keys from flash...");
+    readBinaryFile("/private.key", sk, 32);
+    readBinaryFile("/public.key", pk, 64);
+  }
+
   // 3. Connect to WiFi
-  Serial.printf("Connecting to %s ", ssid);
   WiFi.begin(ssid, password);
   while (WiFi.status() != WL_CONNECTED) {
     delay(1000);
-    Serial.print(".");
+    Serial.println("Connecting to WiFi...");
   }
-  Serial.println("Connected");
+  Serial.println("Connected to WiFi");
 
-  // 4. Sync Time (Required for TLS validation)
+  // 4. Sync Time for Cert Validation
   setClock();
 
-  // 5. Load CA Cert and Keys
-  caCert = readStringFile("/root-ca.crt");
-  readFile("/private.key", sk, 32);
-  readFile("/public.key", pk, 64);
-
+  // 5. Load root CA cert
+  caCert = readFile("/root-ca.crt");
   if (caCert == "") {
-    Serial.println("CRITICAL: CA cert missing.");
+    Serial.println("CRITICAL ERROR: Could not load root CA certificate!");
     while(1) delay(1000);
   }
 
   trustRoot = new BearSSL::X509List(caCert.c_str());
   secureclient.setTrustAnchors(trustRoot);
 
-  // 5. Check/Request Cert
+  // 6. Get public IP
+  WiFiClient plainClient;
+  HTTPClient http;
+
+  http.begin(plainClient, "http://api.ipify.org");
+  int httpResponseCode = http.GET();
+
+  if (httpResponseCode > 0) {
+    publicIP = http.getString();
+    Serial.print("Public IP: ");
+    Serial.println(publicIP);
+  } else {
+    Serial.printf("Failed to get public IP: %d\n", httpResponseCode);
+  }
+  http.end();
+
+  // 7. Request client cert if not found
   if (!LittleFS.exists("/client.crt")) requestCert();
 
-  // 6. Load Client Certificate into Memory
-  clientCert = readStringFile("/client.crt");
+  // 8. Load client cert
+  clientCert = readFile("/client.crt");
 
   if (clientCert == "") {
-    Serial.println("CRITICAL: Client cert missing.");
+    Serial.println("CRITICAL ERROR: Could not load certificate!");
     while(1) delay(1000);
   }
 
-  // 7. Construct DER Private Key for BearSSL
-  uint8_t head[] = {0x30, 0x77, 0x02, 0x01, 0x01, 0x04, 0x20};
-  uint8_t mid[]  = {0xa0, 0x0a, 0x06, 0x08, 0x2a, 0x86, 0x48, 0xce, 0x3d, 0x03, 0x01, 0x07, 0xa1, 0x44, 0x03, 0x42, 0x00, 0x04};
-  
-  memset(key_der, 0, 121);
-  memcpy(key_der, head, 7);
-  memcpy(key_der + 7, sk, 32);
-  memcpy(key_der + 39, mid, 18);
-  memcpy(key_der + 57, pk, 64);
-
-  // 8. Configure BearSSL Client
-  // clearCerts();
-  
+  // 9. Setup device key and apply certs to client
+  setupDeviceKey();
   clientCertList = new BearSSL::X509List(clientCert.c_str());
-  deviceKey = new BearSSL::PrivateKey(key_der, 121);
-
-  unsigned allowed_usages = BR_KEYTYPE_KEYX | BR_KEYTYPE_SIGN; 
-  unsigned cert_issuer_key_type = BR_KEYTYPE_RSA; 
+  unsigned allowed_usages = BR_KEYTYPE_KEYX | BR_KEYTYPE_SIGN;
+  unsigned cert_issuer_key_type = BR_KEYTYPE_RSA;
   secureclient.setClientECCert(clientCertList, deviceKey, allowed_usages, cert_issuer_key_type);
-
-  Serial.print("Checking sk alignment: ");
-  for (int i = 0; i < 32; i++) {
-      if (sk[i] < 16) Serial.print("0");
-      Serial.print(sk[i], HEX);
-  }
-  Serial.println();
-  
-  Serial.println("Pico W initialized and ready for mTLS.");
 }
 
 void loop() {
-  if (WiFi.status() == WL_CONNECTED) {
-    if (certExpiresWithinDay()) {
-      renewCertificate();
-    }
-
-    Serial.print("Connecting to Data Server... ");
-    if (http.begin(secureclient, serverUrl)) {
-      Serial.println("Connected!");
-
-      // Prepare JSON Data
-      doc["temp"] = random(1500, 2101) / 100.0;
-
-      now = time(nullptr);
-      timeinfo = *localtime(&now);
-      char timeStr[20]; 
-      strftime(timeStr, sizeof(timeStr), "%Y-%m-%d %H:%M:%S", &timeinfo);
-
-      doc["time"] = timeStr;
-
-      doc["MAC"] = WiFi.macAddress();
-      
-      serializeJson(doc, data);
-
-      // Send HTTP POST
-      http.addHeader("Content-Type", "application/json");
-      
-      int httpCode = http.POST(data);
-      
-      if (httpCode > 0) {
-        Serial.printf("Server Response: %d\n", httpCode);
-        String response = http.getString();
-        Serial.println(response);
-      } else {
-        Serial.printf("HTTP Error: %s\n", http.errorToString(httpCode).c_str());
-      }
-      
-      http.end();
-    } else {
-      Serial.println("Connection Failed.");
-      char err[100];
-      secureclient.getLastSSLError(err, 100);
-      Serial.printf("SSL Error: %s\n", err);
-    }
-  } else {
-    Serial.println("WiFi Disconnected");
-    delay(10);
+  if (certExpiresWithinDay()) {
+    renewCertificate();
   }
+
+  Serial.print("Connecting to server... ");
+  if (https.begin(secureclient, serverUrl)) {
+    https.addHeader("Content-Type", "application/json");
+
+    // Prepare JSON Data
+    doc["temp"] = random(1500, 2101) / 100.0;
+
+    now = time(nullptr);
+    timeinfo = *localtime(&now);
+    char timeStr[20];
+    strftime(timeStr, sizeof(timeStr), "%Y-%m-%d %H:%M:%S", &timeinfo);
+
+    doc["time"] = timeStr;
+    doc["MAC"] = WiFi.macAddress();
+
+    serializeJson(doc, data);
+
+    int httpResponseCode = https.POST(data);
+
+    if (httpResponseCode > 0) {
+      Serial.printf("Success: %d\n", httpResponseCode);
+      Serial.println(https.getString());
+    } else {
+      Serial.printf("Error: %s\n", https.errorToString(httpResponseCode).c_str());
+    }
+    https.end();
+    delay(3000);
+  }
+  delay(2000);
 }

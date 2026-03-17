@@ -47,6 +47,7 @@ HTTPClient https;
 String ca_cert_str;
 String client_cert_str;
 String client_key_str;
+String publicIP;
 
 struct tm timeinfo;
 time_t now;
@@ -163,10 +164,8 @@ void setClock() {
 }
 
 int requestCert() {
-  IPAddress ip = WiFi.localIP();
-
-  Serial.print("IP address: ");
-  Serial.println(ip);
+  Serial.print("Public IP: ");
+  Serial.println(publicIP);
   Serial.print("MAC address: ");
   Serial.println(WiFi.macAddress());
 
@@ -180,7 +179,7 @@ int requestCert() {
   Serial.printf("Requesting certificate from %s...\n", signUrl);
 
   JsonDocument doc;
-  doc["IP"] = ip.toString();
+  doc["IP"] = publicIP;
   doc["MAC"] = WiFi.macAddress();
   doc["CSR"] = csr;
   String jsonPayload;
@@ -334,13 +333,31 @@ void setup() {
     while(1) delay(1000);
   }
 
-  // 6. Request client cert if not found or initial boot
+  // 6. Get public IP
+  if (WiFi.status() == WL_CONNECTED) {
+    WiFiClient client;
+    HTTPClient http;
+
+    http.begin(client, "http://api.ipify.org");
+    int httpResponseCode = http.GET();
+
+    if (httpResponseCode > 0) {
+      publicIP = http.getString();
+      Serial.print("Public IP: ");
+      Serial.println(publicIP);
+    } else {
+      Serial.printf("Failed to get public IP: %d\n", httpResponseCode);
+    }
+    http.end();
+  }
+
+  // 7. Request client cert if not found or initial boot
   if (!SPIFFS.exists("/client.crt")) requestCert();
 
-  // 7. Delete csr after certificate creation
+  // 8. Delete csr after certificate creation
   SPIFFS.remove("/client.csr");
 
-  // 8. Load client cert and key
+  // 9. Load client cert and key
   client_cert_str = readFile("/client.crt");
   client_key_str  = readFile("/client.key");
 
@@ -349,32 +366,11 @@ void setup() {
     while(1) delay(1000);
   }
 
-  // 9. Apply Certs to Client
+  // 10. Apply Certs to Client
   mTLSclient.setCACert(ca_cert_str.c_str());
   mTLSclient.setCertificate(client_cert_str.c_str());
   mTLSclient.setPrivateKey(client_key_str.c_str());
 
-  if (WiFi.status() == WL_CONNECTED) {
-    WiFiClient client;
-    HTTPClient http;
-    String payload = "";
-
-    http.begin(client, "http://api.ipify.org");
-    int httpResponseCode = http.GET();
-
-    if (httpResponseCode > 0) {
-      Serial.print("HTTP Response code: ");
-      Serial.println(httpResponseCode);
-      payload = http.getString();
-      Serial.print("the server provided this text : ");
-      Serial.println(payload);
-    }
-    else {
-      Serial.print("Error code: ");
-      Serial.println(httpResponseCode);
-    }
-    http.end();
-  }
 }
 
 void loop() {
