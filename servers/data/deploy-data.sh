@@ -23,8 +23,10 @@ rm -f $APP_DIR/data/server.csr
 
 # Fix ownership and permissions
 chown -R ec2-user:ec2-user "$APP_DIR/data"
-sudo chmod 644 $APP_DIR/data/server.crt
-sudo chmod 644 $APP_DIR/data/server.key
+chmod 644 $APP_DIR/data/server.crt
+chmod 644 $APP_DIR/data/server.key
+
+chmod 644 $APP_DIR/data/root-ca.crt
 
 sudo chmod 644 $APP_DIR/data/root-ca.crt
 

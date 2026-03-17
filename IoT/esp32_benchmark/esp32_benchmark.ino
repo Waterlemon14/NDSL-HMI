@@ -26,17 +26,17 @@
 #include "mbedtls/x509_crt.h"
 
 // ─── Configuration ───────────────────────────────────────────────
-// const char* ssid     = "Paella🥘";
-// const char* password = "testpasstest";
+// Set LOCAL_SERVER_IP to the IP of the machine running the servers on your LAN
+#define LOCAL_SERVER_IP "192.168.0.212"
 
 const char* ssid     = "ndsgwifi";
 const char* password = "H1b2idinF2@";
 
-// 13.239.139.188
-const char* serverUrl       = "https://51.20.87.204:8443/data";
-const char* signUrl         = "https://13.239.57.125:8000/receive-device-data/";
-const char* certDownloadUrl = "https://13.239.57.125:8000/download-cert/";
-const char* renewUrl        = "https://13.239.57.125:8000/renew-cert/";
+// Local server endpoints (RA on :8000 via manage.py runserver, Data on :8443)
+const char* serverUrl       = "https://" LOCAL_SERVER_IP ":8443/data";
+const char* signUrl         = "http://" LOCAL_SERVER_IP ":8000/receive-device-data/";
+const char* certDownloadUrl = "http://" LOCAL_SERVER_IP ":8000/download-cert/";
+const char* renewUrl        = "http://" LOCAL_SERVER_IP ":8000/renew-cert/";
 
 const int BENCHMARK_ITERATIONS = 10000;
 
@@ -261,9 +261,17 @@ void benchmarkKeyGeneration() {
 // ─── Benchmark 2: mTLS Handshake ─────────────────────────────────
 // Measures TCP connect + full mTLS handshake to data server
 void benchmarkmTLSHandshake() {
-  // 51.20.87.204
-  IPAddress host(51,20,87,204);
+  static unsigned long results[BENCHMARK_ITERATIONS];
+  Serial.println("\nRunning TLS Handshake benchmark...");
+
+  IPAddress host;
+  host.fromString(LOCAL_SERVER_IP);
   int port = 8443;
+
+  WiFiClientSecure tlsClient;
+  tlsClient.setCACert(ca_cert_str.c_str());
+  tlsClient.setCertificate(client_cert_str.c_str());
+  tlsClient.setPrivateKey(client_key_str.c_str());
 
   for (int i = 0; i < BENCHMARK_ITERATIONS; i++) {
     unsigned long start = millis();
