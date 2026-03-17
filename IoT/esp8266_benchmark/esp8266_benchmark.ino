@@ -31,7 +31,7 @@ const char* signUrl         = "https://13.239.57.125:8000/receive-device-data/";
 const char* certDownloadUrl = "https://13.239.57.125:8000/download-cert/";
 const char* renewUrl        = "https://13.239.57.125:8000/renew-cert/";
 
-const int BENCHMARK_ITERATIONS = 10000;
+const int BENCHMARK_ITERATIONS = 10;
 
 // ─── Globals ─────────────────────────────────────────────────────
 uint8_t sk[32];
@@ -183,6 +183,7 @@ int requestCert() {
       clientCert = https.getString();
       expiration = https.header("X-Cert-Expires-At").toInt();
       writeFile("/client.crt", clientCert.c_str());
+      writeFile("/expiration.txt", String(expiration).c_str());
     }
     https.end();
   }
@@ -221,7 +222,6 @@ void benchmarkmTLSHandshake() {
     if (connected) {
       Serial.printf("mTLSHandshake,%d,%lu,SUCCESS\n", i + 1, elapsed);
     } else {
-      i--;
       Serial.printf("mTLSHandshake,%d,%lu,FAILED\n", i + 1, elapsed);
     }
 
@@ -238,7 +238,7 @@ void benchmarkRenewal() {
     HTTPClient renewHttp;
 
     if (!renewHttp.begin(secureclient, url)) {
-      i--;
+      Serial.printf("CertificateRenewal,%d,0,FAILED\n", i + 1);
       continue;
     }
 
@@ -246,21 +246,22 @@ void benchmarkRenewal() {
 
     unsigned long start = millis();
     int httpCode = renewHttp.POST(clientCert);
-    String response = renewHttp.getString();
-    unsigned long elapsed = millis() - start;
-
     if (httpCode == 200) {
+      String response = renewHttp.getString();
+      expiration = renewHttp.header("X-Cert-Expires-At").toInt();
+      unsigned long elapsed = millis() - start;
       clientCert = response;
       Serial.printf("CertificateRenewal,%d,%lu,SUCCESS\n", i + 1, elapsed);
     } else {
+      unsigned long elapsed = millis() - start;
       Serial.printf("CertificateRenewal,%d,%lu,FAILED\n", i + 1, elapsed);
-      i--;
     }
 
     renewHttp.end();
     delay(100);
   }
   writeFile("/client.crt", clientCert.c_str());
+  writeFile("/expiration.txt", String(expiration).c_str());
 }
 
 // ─── Benchmark 4: Data Send Roundtrip (JSON + POST) ─────────────
@@ -269,7 +270,7 @@ void benchmarkDataSend() {
     HTTPClient https;
 
     if (!https.begin(secureclient, serverUrl)) {
-      i--;
+      Serial.printf("DataSend,%d,0,FAILED\n", i + 1);
       continue;
     }
 
@@ -298,7 +299,6 @@ void benchmarkDataSend() {
       Serial.printf("DataSend,%d,%lu,SUCCESS\n", i + 1, elapsed);
     } else {
       Serial.printf("DataSend,%d,%lu,FAILED\n", i + 1, elapsed);
-      i--;
     }
     https.end();
     delay(300);
@@ -373,13 +373,14 @@ void setup() {
   }
 
   // 7. Ensure device has certificate
-  if (!LittleFS.exists("/client.crt")) {
+  if (!LittleFS.exists("/client.crt") || !LittleFS.exists("/expiration.txt")) {
     Serial.println("No client cert found, requesting...");
     requestCert();
   }
 
   // 8. Load client cert
   clientCert = readFile("/client.crt");
+  expiration = readFile("/expiration.txt").toInt();
 
   if (clientCert == "") {
     Serial.println("CRITICAL: Could not load client cert");
