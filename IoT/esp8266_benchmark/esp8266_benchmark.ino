@@ -31,7 +31,7 @@ const char* signUrl         = "https://13.239.57.125:8000/receive-device-data/";
 const char* certDownloadUrl = "https://13.239.57.125:8000/download-cert/";
 const char* renewUrl        = "https://13.239.57.125:8000/renew-cert/";
 
-const int BENCHMARK_ITERATIONS = 10;
+const int BENCHMARK_ITERATIONS = 10000;
 
 // ─── Globals ─────────────────────────────────────────────────────
 uint8_t sk[32];
@@ -243,21 +243,39 @@ void benchmarkRenewal() {
     }
 
     renewHttp.addHeader("Content-Type", "application/x-pem-file");
+    const char* headerKeys[] = {"X-Cert-Expires-At"};
+    renewHttp.collectHeaders(headerKeys, 1);
 
     unsigned long start = millis();
     int httpCode = renewHttp.POST(clientCert);
     if (httpCode == 200) {
-      String response = renewHttp.getString();
       expiration = renewHttp.header("X-Cert-Expires-At").toInt();
       unsigned long elapsed = millis() - start;
-      clientCert = response;
-      Serial.printf("CertificateRenewal,%d,%lu,SUCCESS\n", i + 1, elapsed);
+
+      // Read response and tear down connection BEFORE freeing BearSSL objects
+      // to avoid dangling pointer in the TLS engine
+      String response = renewHttp.getString();
+      renewHttp.end();
+      secureclient.stop();
+
+      if (response.startsWith("-----BEGIN") && response.indexOf("-----END") > 0) {
+        delete clientCertList;
+        clientCertList = nullptr;
+        clientCert = response;
+        clientCertList = new BearSSL::X509List(clientCert.c_str());
+        secureclient.setClientECCert(clientCertList, deviceKey, BR_KEYTYPE_KEYX | BR_KEYTYPE_SIGN, BR_KEYTYPE_RSA);
+        Serial.printf("CertificateRenewal,%d,%lu,SUCCESS\n", i + 1, elapsed);
+      } else {
+        Serial.printf("CertificateRenewal,%d,%lu,FAILED (truncated response, heap=%u)\n", i + 1, elapsed, ESP.getFreeHeap());
+      }
     } else {
       unsigned long elapsed = millis() - start;
-      Serial.printf("CertificateRenewal,%d,%lu,FAILED\n", i + 1, elapsed);
+      String errBody = renewHttp.getString();
+      Serial.printf("CertificateRenewal,%d,%lu,FAILED (HTTP %d: %s)\n", i + 1, elapsed, httpCode, errBody.c_str());
+      renewHttp.end();
+      secureclient.stop();
     }
 
-    renewHttp.end();
     delay(100);
   }
   writeFile("/client.crt", clientCert.c_str());
@@ -277,7 +295,7 @@ void benchmarkDataSend() {
     https.addHeader("Content-Type", "application/json");
 
     JsonDocument doc;
-    doc["temp"] = random(15, 21);
+    doc["temp"] = random(1500, 2101) / 100.0;
 
     now = time(nullptr);
     timeinfo = *localtime(&now);
@@ -298,7 +316,7 @@ void benchmarkDataSend() {
     if (httpResponseCode == 200) {
       Serial.printf("DataSend,%d,%lu,SUCCESS\n", i + 1, elapsed);
     } else {
-      Serial.printf("DataSend,%d,%lu,FAILED\n", i + 1, elapsed);
+      Serial.printf("DataSend,%d,%lu,FAILED (HTTP %d: %s)\n", i + 1, elapsed, httpResponseCode, response.c_str());
     }
     https.end();
     delay(300);
@@ -339,7 +357,7 @@ void setup() {
   }
 
   trustRoot = new BearSSL::X509List(caCert.c_str());
-  secureclient.setBufferSizes(1024, 1024);
+  secureclient.setBufferSizes(2048, 2048);
   secureclient.setTrustAnchors(trustRoot);
 
   // 5. Get public IP
@@ -406,10 +424,10 @@ void loop() {
   Serial.printf("WiFi RSSI: %d dBm\n", WiFi.RSSI());
   Serial.printf("Free Heap: %u bytes\n", ESP.getFreeHeap());
 
-  benchmarkmTLSHandshake();
-  benchmarkRenewal();
   benchmarkDataSend();
+  benchmarkRenewal();
   benchmarkKeyGeneration();
+  benchmarkmTLSHandshake();
 
   Serial.println("\n===== BENCHMARK COMPLETE =====\n");
 

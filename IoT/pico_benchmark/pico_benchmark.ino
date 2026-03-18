@@ -20,15 +20,18 @@
 #include <uECC.h>
 
 // ─── Configuration ───────────────────────────────────────────────
-const char* ssid     = "test";
-const char* password = "passtest";
+// const char* ssid     = "test";
+// const char* password = "passtest";
+
+const char* ssid     = "ndsgwifi";
+const char* password = "H1b2idinF2@";
 
 const char* serverUrl       = "https://51.20.87.204:8443/data";
 const char* signUrl         = "https://13.239.57.125:8000/receive-device-data/";
 const char* certDownloadUrl = "https://13.239.57.125:8000/download-cert/";
 const char* renewUrl        = "https://13.239.57.125:8000/renew-cert/";
 
-const int BENCHMARK_ITERATIONS = 10;
+const int BENCHMARK_ITERATIONS = 10000;
 
 // ─── Globals ─────────────────────────────────────────────────────
 uint8_t sk[32];
@@ -270,17 +273,32 @@ void benchmarkRenewal() {
     unsigned long start = millis();
     int httpCode = renewHttp.POST(clientCert);
     if (httpCode == 200) {
-      String response = renewHttp.getString();
       expiration = renewHttp.header("X-Cert-Expires-At").toInt();
       unsigned long elapsed = millis() - start;
-      clientCert = response;
-      Serial.printf("CertificateRenewal,%d,%lu,SUCCESS\n", i + 1, elapsed);
+
+      // Read response and tear down connection BEFORE freeing BearSSL objects
+      String response = renewHttp.getString();
+      renewHttp.end();
+      secureclient.stop();
+
+      if (response.startsWith("-----BEGIN") && response.indexOf("-----END") > 0) {
+        delete clientCertList;
+        clientCertList = nullptr;
+        clientCert = response;
+        clientCertList = new BearSSL::X509List(clientCert.c_str());
+        secureclient.setClientECCert(clientCertList, deviceKey, BR_KEYTYPE_KEYX | BR_KEYTYPE_SIGN, BR_KEYTYPE_RSA);
+        Serial.printf("CertificateRenewal,%d,%lu,SUCCESS\n", i + 1, elapsed);
+      } else {
+        Serial.printf("CertificateRenewal,%d,%lu,FAILED (truncated response)\n", i + 1, elapsed);
+      }
     } else {
       unsigned long elapsed = millis() - start;
-      Serial.printf("CertificateRenewal,%d,%lu,FAILED\n", i + 1, elapsed);
+      String errBody = renewHttp.getString();
+      Serial.printf("CertificateRenewal,%d,%lu,FAILED (HTTP %d: %s)\n", i + 1, elapsed, httpCode, errBody.c_str());
+      renewHttp.end();
+      secureclient.stop();
     }
 
-    renewHttp.end();
     delay(100);
   }
   writeFile("/client.crt", clientCert.c_str());
@@ -321,7 +339,7 @@ void benchmarkDataSend() {
     if (httpResponseCode == 200) {
       Serial.printf("DataSend,%d,%lu,SUCCESS\n", i + 1, elapsed);
     } else {
-      Serial.printf("DataSend,%d,%lu,FAILED\n", i + 1, elapsed);
+      Serial.printf("DataSend,%d,%lu,FAILED (HTTP %d: %s)\n", i + 1, elapsed, httpResponseCode, response.c_str());
     }
     https.end();
     delay(300);
@@ -421,11 +439,12 @@ void loop() {
 
   Serial.println("\n===== BENCHMARK START =====");
   Serial.printf("WiFi RSSI: %d dBm\n", WiFi.RSSI());
+  Serial.printf("Free Heap: %u bytes\n", rp2040.getFreeHeap());
 
-  benchmarkmTLSHandshake();
-  benchmarkRenewal();
   benchmarkDataSend();
+  benchmarkRenewal();
   benchmarkKeyGeneration();
+  benchmarkmTLSHandshake();
 
   Serial.println("\n===== BENCHMARK COMPLETE =====\n");
 

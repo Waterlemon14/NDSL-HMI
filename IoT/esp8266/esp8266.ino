@@ -254,21 +254,30 @@ void renewCertificate() {
   int httpCode = https.POST(clientCert);
 
   if (httpCode == 200) {
-    String newCert = https.getString();
     expiration = https.header("X-Cert-Expires-At").toInt();
-    writeFile("/client.crt", newCert.c_str());
-    writeFile("/expiration.txt", String(expiration).c_str());
-    clientCert = newCert;
-    clientCertList = new BearSSL::X509List(clientCert.c_str());
-    unsigned allowed_usages = BR_KEYTYPE_KEYX | BR_KEYTYPE_SIGN;
-    unsigned cert_issuer_key_type = BR_KEYTYPE_RSA;
-    secureclient.setClientECCert(clientCertList, deviceKey, allowed_usages, cert_issuer_key_type);
-    Serial.println("Certificate renewed successfully");
+
+    // Read response and tear down connection BEFORE freeing BearSSL objects
+    String response = https.getString();
+    https.end();
+    secureclient.stop();
+
+    if (response.startsWith("-----BEGIN") && response.indexOf("-----END") > 0) {
+      delete clientCertList;
+      clientCertList = nullptr;
+      clientCert = response;
+      writeFile("/client.crt", clientCert.c_str());
+      writeFile("/expiration.txt", String(expiration).c_str());
+      clientCertList = new BearSSL::X509List(clientCert.c_str());
+      secureclient.setClientECCert(clientCertList, deviceKey, BR_KEYTYPE_KEYX | BR_KEYTYPE_SIGN, BR_KEYTYPE_RSA);
+      Serial.println("Certificate renewed successfully");
+    } else {
+      Serial.println("Certificate renewal failed: truncated response");
+    }
   } else {
     Serial.printf("Certificate renewal failed: %d\n", httpCode);
+    https.end();
+    secureclient.stop();
   }
-
-  https.end();
 }
 
 void setup() {
@@ -282,6 +291,33 @@ void setup() {
     return;
   }
   Serial.println("LittleFS Mounted");
+
+  // 2. Connect to WiFi
+  WiFi.begin(ssid, password);
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(1000);
+    Serial.println("Connecting to WiFi...");
+  }
+  Serial.println("Connected to WiFi");
+
+  // 3. Sync Time for Cert Validation
+  setClock();
+
+  // 4. Get public IP
+  WiFiClient plainClient;
+  HTTPClient http;
+
+  http.begin(plainClient, "http://api.ipify.org");
+  int httpResponseCode = http.GET();
+
+  if (httpResponseCode > 0) {
+    publicIP = http.getString();
+    Serial.print("Public IP: ");
+    Serial.println(publicIP);
+  } else {
+    Serial.printf("Failed to get public IP: %d\n", httpResponseCode);
+  }
+  http.end();
 
   // Remove previously generated keys and cert if needed
   Serial.print("Normal Operation (0), Reset (1): ");
@@ -299,7 +335,7 @@ void setup() {
     Serial.println("Board credentials reset");
   }
 
-  // 2. Generate key pair if keys do not exist
+  // 5. Generate key pair if keys do not exist
   if (!LittleFS.exists("/private.key") || !LittleFS.exists("/public.key")) {
     generateKeyPair();
   } else {
@@ -313,18 +349,7 @@ void setup() {
     pkFile.close();
   }
 
-  // 3. Connect to WiFi
-  WiFi.begin(ssid, password);
-  while (WiFi.status() != WL_CONNECTED) {
-    delay(1000);
-    Serial.println("Connecting to WiFi...");
-  }
-  Serial.println("Connected to WiFi");
-
-  // 4. Sync Time for Cert Validation
-  setClock();
-
-  // 5. Load root CA cert
+  // 6. Load root CA cert
   caCert = readFile("/root-ca.crt");
   if (caCert == "") {
     Serial.println("CRITICAL ERROR: Could not load root CA certificate!");
@@ -332,24 +357,8 @@ void setup() {
   }
 
   trustRoot = new BearSSL::X509List(caCert.c_str());
-  secureclient.setBufferSizes(1024, 1024);
+  secureclient.setBufferSizes(2048, 2048);
   secureclient.setTrustAnchors(trustRoot);
-
-  // 6. Get public IP
-  WiFiClient plainClient;
-  HTTPClient http;
-
-  http.begin(plainClient, "http://api.ipify.org");
-  int httpResponseCode = http.GET();
-
-  if (httpResponseCode > 0) {
-    publicIP = http.getString();
-    Serial.print("Public IP: ");
-    Serial.println(publicIP);
-  } else {
-    Serial.printf("Failed to get public IP: %d\n", httpResponseCode);
-  }
-  http.end();
 
   // 7. Request client cert if not found
   if (!LittleFS.exists("/client.crt") || !LittleFS.exists("/expiration.txt")) requestCert();

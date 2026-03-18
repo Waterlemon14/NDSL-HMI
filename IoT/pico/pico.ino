@@ -19,14 +19,14 @@
 #include <uECC.h>
 
 // Wifi credentials
-const char* ssid     = "test";
-const char* password = "passtest";
+// const char* ssid     = "test";
+// const char* password = "passtest";
 
 // const char* ssid     = "Paella🥘";
 // const char* password = "testpasstest";
 
-// const char* ssid     = "ndsgwifi";
-// const char* password = "H1b2idinF2@";
+const char* ssid     = "ndsgwifi";
+const char* password = "H1b2idinF2@";
 
 // Servers
 const char* serverUrl = "https://51.20.87.204:8443/data";
@@ -287,21 +287,30 @@ void renewCertificate() {
   int httpCode = https.POST(clientCert);
 
   if (httpCode == 200) {
-    String newCert = https.getString();
     expiration = https.header("X-Cert-Expires-At").toInt();
-    writeFile("/client.crt", newCert.c_str());
-    writeFile("/expiration.txt", String(expiration).c_str());
-    clientCert = newCert;
-    clientCertList = new BearSSL::X509List(clientCert.c_str());
-    unsigned allowed_usages = BR_KEYTYPE_KEYX | BR_KEYTYPE_SIGN;
-    unsigned cert_issuer_key_type = BR_KEYTYPE_RSA;
-    secureclient.setClientECCert(clientCertList, deviceKey, allowed_usages, cert_issuer_key_type);
-    Serial.println("Certificate renewed successfully");
+
+    // Read response and tear down connection BEFORE freeing BearSSL objects
+    String response = https.getString();
+    https.end();
+    secureclient.stop();
+
+    if (response.startsWith("-----BEGIN") && response.indexOf("-----END") > 0) {
+      delete clientCertList;
+      clientCertList = nullptr;
+      clientCert = response;
+      writeFile("/client.crt", clientCert.c_str());
+      writeFile("/expiration.txt", String(expiration).c_str());
+      clientCertList = new BearSSL::X509List(clientCert.c_str());
+      secureclient.setClientECCert(clientCertList, deviceKey, BR_KEYTYPE_KEYX | BR_KEYTYPE_SIGN, BR_KEYTYPE_RSA);
+      Serial.println("Certificate renewed successfully");
+    } else {
+      Serial.println("Certificate renewal failed: truncated response");
+    }
   } else {
     Serial.printf("Certificate renewal failed: %d\n", httpCode);
+    https.end();
+    secureclient.stop();
   }
-
-  https.end();
 }
 
 void setup() {

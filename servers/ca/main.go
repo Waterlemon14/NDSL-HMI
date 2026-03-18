@@ -25,6 +25,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/joho/godotenv"
 )
@@ -48,7 +49,12 @@ var db *pgxpool.Pool
 
 // initDB connects to Postgres and ensures the revoked_certificates table exists.
 func initDB(databaseURL string) error {
-	pool, err := pgxpool.New(context.Background(), databaseURL)
+	config, err := pgxpool.ParseConfig(databaseURL)
+	if err != nil {
+		return fmt.Errorf("failed to parse database URL: %w", err)
+	}
+	config.ConnConfig.DefaultQueryExecMode = pgx.QueryExecModeSimpleProtocol
+	pool, err := pgxpool.NewWithConfig(context.Background(), config)
 	if err != nil {
 		return fmt.Errorf("failed to create connection pool: %w", err)
 	}
@@ -91,7 +97,7 @@ func main() {
 	caCertPath := flag.String("ca-cert", "root-ca.crt", "Path to CA certificate (PEM)")
 	caKeyPath := flag.String("ca-key", "root-ca.key", "Path to CA private key (PEM, PKCS#1, PKCS#8 or EC)")
 	addr := flag.String("addr", ":15000", "HTTP listen address")
-	validDays := flag.Int("days", 1, "Validity of issued certs in days")
+	validDays := flag.Int("days", 7, "Validity of issued certs in days")
 	flag.Parse()
 
 	databaseURL := os.Getenv("DATABASE_URL")
