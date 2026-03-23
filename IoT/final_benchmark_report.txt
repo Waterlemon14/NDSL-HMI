@@ -2,20 +2,20 @@
           MULTI-DEVICE BENCHMARK REPORT           
 ==================================================
 
-                            Avg (ms)  Min (ms)  Max (ms)  Samples
-Device  TestType                                                 
-ESP32   CertificateRenewal   2564.83      1974     16297    10000
-        DataSend             2700.34      1819     14440    10000
-        KeyGen                136.35       135       138    10000
-        mTLSHandshake        1752.35      1170    120263    10000
-ESP8266 CertificateRenewal   4793.37      3935     27441    10000
-        DataSend             5805.56      4647     27729    10000
-        KeyGen                403.85       403       405    10000
-        mTLSHandshake        4369.38      3546     21421    10000
-PICO    CertificateRenewal   5195.94       322     20533    10000
-        DataSend             3957.24      3347     14781    10000
-        KeyGen                 81.68        81        83    10000
-        mTLSHandshake        2435.10      2091     15234    10000
+                            Avg (ms)  Min (ms)  Max (ms)  Success (%)  Fail (%)  Samples
+Device  TestType                                                                        
+ESP32   CertificateRenewal   2564.83      1974     16297        99.94      0.06    10000
+        DataSend             2700.34      1819     14440        99.99      0.01    10000
+        KeyGen                136.35       135       138       100.00      0.00    10000
+        mTLSHandshake        1752.35      1170    120263        98.12      1.88    10000
+ESP8266 CertificateRenewal   4793.37      3935     27441        86.57     13.43    10000
+        DataSend             5805.56      4647     27729        99.32      0.68    10000
+        KeyGen                403.85       403       405       100.00      0.00    10000
+        mTLSHandshake        4369.38      3546     21421        99.92      0.08    10000
+PICO    CertificateRenewal   5195.94       322     20533        91.26      8.74    10000
+        DataSend             3957.24      3347     14781        99.93      0.07    10000
+        KeyGen                 81.68        81        83       100.00      0.00    10000
+        mTLSHandshake        2435.10      2091     15234        99.69      0.31    10000
 
 ==================================================
-Report Generated: 2026-03-23 13:59:22.142152
+Report Generated: 2026-03-23 14:22:12.689414
