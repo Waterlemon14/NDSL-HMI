@@ -2,6 +2,27 @@ import pandas as pd
 import glob
 import os
 
+def load_safe_csv(filepath):
+    parsed_data = []
+    with open(filepath, "r", encoding="utf-8") as f:
+        # Read and ignore the header line
+        f.readline() 
+        for line in f:
+            line = line.strip()
+            if not line:
+                continue
+            
+            parts = line.split(",", 3) 
+            
+            if len(parts) == 4:
+                parsed_data.append(parts)
+                
+    # Rebuild the DataFrame and convert numbers so the math works later
+    df = pd.DataFrame(parsed_data, columns=['TestType', 'Iteration', 'Elapsed_ms', 'Result'])
+    df['Iteration'] = pd.to_numeric(df['Iteration'], errors='coerce')
+    df['Elapsed_ms'] = pd.to_numeric(df['Elapsed_ms'], errors='coerce')
+    return df
+
 def collate_all_results():
     files = glob.glob("results_*.csv")
     
@@ -22,7 +43,7 @@ def collate_all_results():
             device_name = "UNKNOWN"
         
         # Load the CSV
-        df = pd.read_csv(file)
+        df = load_safe_csv(file)
         
         # Add a 'Device' column for board
         df['Device'] = device_name
