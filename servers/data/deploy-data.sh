@@ -15,7 +15,8 @@ go build -o data-server .
 echo "Data server built"
 
 # Generate new keys and certificates for data server
-openssl req -new -nodes -newkey rsa:4096 -keyout $APP_DIR/data/server.key -out $APP_DIR/data/server.csr -config $APP_DIR/data/server.cnf
+openssl req -new -nodes -newkey rsa:4096 -keyout $APP_DIR/data/server.key \
+-out $APP_DIR/data/server.csr -config $APP_DIR/data/server.cnf
 openssl x509 -req -in $APP_DIR/data/server.csr -copy_extensions=copy -CA $APP_DIR/data/root-ca.crt -CAkey $APP_DIR/data/root-ca.key -CAcreateserial -out $APP_DIR/data/server.crt -days 365 -sha256
 # rm -f $APP_DIR/data/root-ca.key
 rm -f $APP_DIR/data/server.csr
@@ -26,6 +27,8 @@ chmod 644 $APP_DIR/data/server.crt
 chmod 644 $APP_DIR/data/server.key
 
 chmod 644 $APP_DIR/data/root-ca.crt
+
+sudo chmod 644 $APP_DIR/data/root-ca.crt
 
 # Install and restart systemd service
 echo "--- Restarting Data service ---"

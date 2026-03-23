@@ -74,7 +74,26 @@ def main():
     print("Listening for benchmark output (Ctrl+C to abort)...\n")
 
     capturing = False
-    captured_lines = []
+    out_dir = os.path.dirname(os.path.abspath(__file__))
+    header = "TestType,Iteration,Elapsed_ms,Result\n"
+
+    # Per-test buffers and counters
+    test_lines = {}    # test_type -> list of pending lines
+    test_files = {}    # test_type -> number of files already saved
+    SAVE_EVERY = 1000
+
+    def flush_test(test_type):
+        """Save buffered lines for a test type to a numbered CSV file."""
+        if test_type not in test_lines or not test_lines[test_type]:
+            return
+        file_num = test_files.get(test_type, 0)
+        out_path = os.path.join(out_dir, f"results_{device}_{test_type}_{file_num}.csv")
+        with open(out_path, "w") as f:
+            f.write(header)
+            f.write("\n".join(test_lines[test_type]) + "\n")
+        print(f"\n  Saved {len(test_lines[test_type])} samples to {out_path}")
+        test_files[test_type] = file_num + 1
+        test_lines[test_type] = []
 
     try:
         while True:
@@ -92,19 +111,24 @@ def main():
                 if END_MARKER in line:
                     break
                 if "," in line:
-                    captured_lines.append(line)
+                    test_type = line.split(",", 1)[0]
+                    test_lines.setdefault(test_type, []).append(line)
+
+                    if len(test_lines[test_type]) >= SAVE_EVERY:
+                        flush_test(test_type)
 
     except KeyboardInterrupt:
         print("\nAborted by user.")
     finally:
         ser.close()
 
-    if captured_lines:
-        out_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), f"results_{device}.csv")
-        with open(out_path, "w") as f:
-            f.write("TestType,Iteration,Elapsed_ms,Result\n")
-            f.write("\n".join(captured_lines) + "\n")
-        print(f"\nResults saved to {out_path}")
+    # Flush any remaining samples
+    for test_type in test_lines:
+        flush_test(test_type)
+
+    total = sum(test_files.get(t, 0) for t in test_files)
+    if total > 0:
+        print(f"\nDone. Saved {total} file(s) across {len(test_files)} test type(s).")
     else:
         print("\nNo benchmark results captured.")
 

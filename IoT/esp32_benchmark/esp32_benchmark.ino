@@ -33,10 +33,15 @@ const char* ssid     = "ndsgwifi";
 const char* password = "H1b2idinF2@";
 
 // Local server endpoints (RA on :8000 via manage.py runserver, Data on :8443)
-const char* serverUrl       = "https://" LOCAL_SERVER_IP ":8443/data";
-const char* signUrl         = "http://" LOCAL_SERVER_IP ":8000/receive-device-data/";
-const char* certDownloadUrl = "http://" LOCAL_SERVER_IP ":8000/download-cert/";
-const char* renewUrl        = "http://" LOCAL_SERVER_IP ":8000/renew-cert/";
+// const char* serverUrl       = "https://" LOCAL_SERVER_IP ":8443/data";
+// const char* signUrl         = "http://" LOCAL_SERVER_IP ":8000/receive-device-data/";
+// const char* certDownloadUrl = "http://" LOCAL_SERVER_IP ":8000/download-cert/";
+// const char* renewUrl        = "http://" LOCAL_SERVER_IP ":8000/renew-cert/";
+
+const char* serverUrl       = "https://51.20.87.204:8443/data";
+const char* signUrl         = "https://13.239.57.125:8000/receive-device-data/";
+const char* certDownloadUrl = "https://13.239.57.125:8000/download-cert/";
+const char* renewUrl        = "https://13.239.57.125:8000/renew-cert/";
 
 const int BENCHMARK_ITERATIONS = 10000;
 
@@ -44,11 +49,14 @@ const int BENCHMARK_ITERATIONS = 10000;
 String ca_cert_str;
 String client_cert_str;
 String client_key_str;
+String publicIP;
 
 struct tm timeinfo;
 time_t now;
 
 bool benchmarkDone = false;
+
+WiFiClientSecure mtlsClient;
 
 // ─── SPIFFS Helpers (reused from production) ─────────────────────
 String readFile(const char* path) {
@@ -146,7 +154,7 @@ int requestCert() {
   }
 
   JsonDocument doc;
-  doc["IP"]  = WiFi.localIP().toString();
+  doc["IP"]  = publicIP;
   doc["MAC"] = WiFi.macAddress();
   doc["CSR"] = csr;
   String jsonPayload;
@@ -180,35 +188,9 @@ int requestCert() {
   return 0;
 }
 
-// ─── Benchmark Helpers ───────────────────────────────────────────
-void printResults(const char* label, unsigned long results[], int count) {
-  unsigned long minVal = results[0];
-  unsigned long maxVal = results[0];
-  unsigned long sum = 0;
-
-  for (int i = 0; i < count; i++) {
-    if (results[i] < minVal) minVal = results[i];
-    if (results[i] > maxVal) maxVal = results[i];
-    sum += results[i];
-  }
-  unsigned long avg = sum / count;
-
-  Serial.printf("\n[%s] (%d iterations)\n", label, count);
-  Serial.printf("  Min: %lu ms | Max: %lu ms | Avg: %lu ms\n", minVal, maxVal, avg);
-  // Serial.print("  Raw:");
-  // for (int i = 0; i < count; i++) {
-  //   Serial.printf(" %lu", results[i]);
-  //   if (i < count - 1) Serial.print(",");
-  // }
-  Serial.println();
-}
-
 // ─── Benchmark 1: ECC Key Generation ────────────────────────────
 // Generates ECC P-256 key + CSR entirely in memory (no SPIFFS writes)
 void benchmarkKeyGeneration() {
-  static unsigned long results[BENCHMARK_ITERATIONS];
-  Serial.println("\nRunning Key Generation benchmark...");
-
   for (int i = 0; i < BENCHMARK_ITERATIONS; i++) {
     mbedtls_pk_context key;
     mbedtls_x509write_csr csr;
@@ -249,72 +231,46 @@ void benchmarkKeyGeneration() {
     mbedtls_x509write_csr_pem(&csr, output_buf, sizeof(output_buf),
                                 mbedtls_ctr_drbg_random, &ctr_drbg);
 
-    results[i] = elapsed;
-
     // Cleanup
     mbedtls_pk_free(&key);
     mbedtls_x509write_csr_free(&csr);
     mbedtls_ctr_drbg_free(&ctr_drbg);
     mbedtls_entropy_free(&entropy);
 
-    Serial.printf("  Iteration %d: %lu ms\n", i + 1, elapsed);
+    Serial.printf("KeyGen,%d,%lu,SUCCESS\n", i + 1, elapsed);
   }
-
-  printResults("Key Generation", results, BENCHMARK_ITERATIONS);
 }
 
-// ─── Benchmark 2: TLS Handshake ─────────────────────────────────
-// Measures TCP connect + full mTLS handshake to data server
-void benchmarkTLSHandshake() {
-  static unsigned long results[BENCHMARK_ITERATIONS];
-  Serial.println("\nRunning TLS Handshake benchmark...");
-
-  IPAddress host;
-  host.fromString(LOCAL_SERVER_IP);
+// ─── Benchmark 2: mTLS Handshake ─────────────────────────────────
+void benchmarkmTLSHandshake() {
+  IPAddress host(51, 20, 87, 204);
   int port = 8443;
-
-  WiFiClientSecure tlsClient;
-  tlsClient.setCACert(ca_cert_str.c_str());
-  tlsClient.setCertificate(client_cert_str.c_str());
-  tlsClient.setPrivateKey(client_key_str.c_str());
-  
 
   for (int i = 0; i < BENCHMARK_ITERATIONS; i++) {
     unsigned long start = millis();
-    // bool connected = tlsClient.connect(host.c_str(), port);
-    bool connected = tlsClient.connect(host, port);
+    bool connected = mtlsClient.connect(host, port);
     unsigned long elapsed = millis() - start;
 
     if (connected) {
-      results[i] = elapsed;
-      Serial.printf("  Iteration %d: %lu ms\n", i + 1, elapsed);
+      Serial.printf("mTLSHandshake,%d,%lu,SUCCESS\n", i + 1, elapsed);
     } else {
-      results[i] = elapsed;
-      Serial.printf("  Iteration %d: FAILED (%lu ms)\n", i + 1, elapsed);
+      Serial.printf("mTLSHandshake,%d,%lu,FAILED\n", i + 1, elapsed);
     }
 
-    tlsClient.stop();
-    delay(100);  // brief pause between handshakes
+    mtlsClient.stop();
+    delay(500);
   }
-  
-  printResults("TLS Handshake", results, BENCHMARK_ITERATIONS);
 }
 
 // ─── Benchmark 3: Certificate Renewal ───────────────────────────
-// Measures HTTP POST of current cert to RA renewal endpoint + response
 void benchmarkRenewal() {
-  static unsigned long results[BENCHMARK_ITERATIONS];
-  Serial.println("\nRunning Certificate Renewal benchmark...");
-
   String url = String(renewUrl) + WiFi.macAddress() + "/";
 
   for (int i = 0; i < BENCHMARK_ITERATIONS; i++) {
-    WiFiClient raClient;
     HTTPClient renewHttp;
 
-    if (!renewHttp.begin(raClient, url)) {
-      Serial.printf("  Iteration %d: Failed to begin connection\n", i + 1);
-      results[i] = 0;
+    if (!renewHttp.begin(mtlsClient, url)) {
+      Serial.printf("CertificateRenewal,%d,0,FAILED\n", i + 1);
       continue;
     }
 
@@ -322,47 +278,37 @@ void benchmarkRenewal() {
 
     unsigned long start = millis();
     int httpCode = renewHttp.POST(client_cert_str);
-    String response = renewHttp.getString();
-    unsigned long elapsed = millis() - start;
-
-    results[i] = elapsed;
-
     if (httpCode == 200) {
-      // Update cert in memory for subsequent iterations
-      client_cert_str = response;
-      Serial.printf("  Iteration %d: %lu ms (renewed)\n", i + 1, elapsed);
+      unsigned long elapsed = millis() - start;
+      String response = renewHttp.getString();
+      renewHttp.end();
+
+      if (response.startsWith("-----BEGIN") && response.indexOf("-----END") > 0) {
+        client_cert_str = response;
+        mtlsClient.setCertificate(client_cert_str.c_str());
+        Serial.printf("CertificateRenewal,%d,%lu,SUCCESS\n", i + 1, elapsed);
+      } else {
+        Serial.printf("CertificateRenewal,%d,%lu,FAILED (truncated response)\n", i + 1, elapsed);
+      }
     } else {
-      Serial.printf("  Iteration %d: %lu ms (HTTP %d)\n", i + 1, elapsed, httpCode);
+      unsigned long elapsed = millis() - start;
+      String errBody = renewHttp.getString();
+      Serial.printf("CertificateRenewal,%d,%lu,FAILED (HTTP %d: %s)\n", i + 1, elapsed, httpCode, errBody.c_str());
+      renewHttp.end();
     }
 
-    renewHttp.end();
     delay(100);
   }
-  
-  printResults("Certificate Renewal", results, BENCHMARK_ITERATIONS);
-
-  // Save the latest renewed cert to SPIFFS so mTLS still works
   writeFile("/client.crt", client_cert_str.c_str());
 }
 
 // ─── Benchmark 4: Data Send Roundtrip ───────────────────────────
-// Measures HTTP POST of JSON data over established mTLS session
 void benchmarkDataSend() {
-  static unsigned long results[BENCHMARK_ITERATIONS];
-  Serial.println("\nRunning Data Send Roundtrip benchmark...");
-
-  // Establish persistent mTLS connection
-  WiFiClientSecure dataClient;
-  dataClient.setCACert(ca_cert_str.c_str());
-  dataClient.setCertificate(client_cert_str.c_str());
-  dataClient.setPrivateKey(client_key_str.c_str());
-
-  HTTPClient https;
-
   for (int i = 0; i < BENCHMARK_ITERATIONS; i++) {
-    if (!https.begin(dataClient, serverUrl)) {
-      Serial.printf("  Iteration %d: Failed to begin connection\n", i + 1);
-      results[i] = 0;
+    HTTPClient https;
+
+    if (!https.begin(mtlsClient, serverUrl)) {
+      Serial.printf("DataSend,%d,0,FAILED\n", i + 1);
       continue;
     }
 
@@ -388,20 +334,14 @@ void benchmarkDataSend() {
     String response = https.getString();
     unsigned long elapsed = millis() - start;
 
-    results[i] = elapsed;
-
-    if (httpResponseCode > 0) {
-      Serial.printf("  Iteration %d: %lu ms (HTTP %d)\n", i + 1, elapsed, httpResponseCode);
+    if (httpResponseCode == 200) {
+      Serial.printf("DataSend,%d,%lu,SUCCESS\n", i + 1, elapsed);
     } else {
-      Serial.printf("  Iteration %d: %lu ms (Error: %s)\n", i + 1, elapsed,
-                     https.errorToString(httpResponseCode).c_str());
+      Serial.printf("DataSend,%d,%lu,FAILED (HTTP %d: %s)\n", i + 1, elapsed, httpResponseCode, response.c_str());
     }
-
     https.end();
-    delay(100);
+    delay(300);
   }
-
-  printResults("Data Send Roundtrip", results, BENCHMARK_ITERATIONS);
 }
 
 // ─── Setup ───────────────────────────────────────────────────────
@@ -426,7 +366,22 @@ void setup() {
     Serial.println("Connecting to WiFi...");
   }
   Serial.println("Connected to WiFi");
-  Serial.printf("IP: %s\n", WiFi.localIP().toString().c_str());
+
+  // Get public IP
+  {
+    WiFiClient plainClient;
+    HTTPClient http;
+    http.begin(plainClient, "http://api.ipify.org");
+    int httpResponseCode = http.GET();
+    if (httpResponseCode > 0) {
+      publicIP = http.getString();
+      Serial.print("Public IP: ");
+      Serial.println(publicIP);
+    } else {
+      Serial.printf("Failed to get public IP: %d\n", httpResponseCode);
+    }
+    http.end();
+  }
 
   // 3. Sync NTP
   setClock();
@@ -458,6 +413,10 @@ void setup() {
     while (1) delay(1000);
   }
 
+  mtlsClient.setCACert(ca_cert_str.c_str());
+  mtlsClient.setCertificate(client_cert_str.c_str());
+  mtlsClient.setPrivateKey(client_key_str.c_str());
+
   Serial.println("\nPrerequisites complete. Starting benchmarks...\n");
 }
 
@@ -468,15 +427,15 @@ void loop() {
     return;
   }
 
-  Serial.println("\n===== ESP32 BENCHMARK RESULTS =====");
+  Serial.println("\n===== BENCHMARK START =====");
   Serial.printf("WiFi RSSI: %d dBm\n", WiFi.RSSI());
   Serial.printf("Free Heap: %u bytes\n", ESP.getFreeHeap());
 
   // Run all 4 benchmarks sequentially
-  benchmarkKeyGeneration();
-  benchmarkTLSHandshake();
-  benchmarkRenewal();
   benchmarkDataSend();
+  benchmarkRenewal();
+  benchmarkKeyGeneration();
+  benchmarkmTLSHandshake();
 
   Serial.println("\n===== BENCHMARK COMPLETE =====\n");
 

@@ -47,6 +47,7 @@ HTTPClient https;
 String ca_cert_str;
 String client_cert_str;
 String client_key_str;
+String publicIP;
 
 struct tm timeinfo;
 time_t now;
@@ -163,33 +164,8 @@ void setClock() {
 }
 
 int requestCert() {
-
-  if (WiFi.status() == WL_CONNECTED) {
-    WiFiClient client;
-    HTTPClient http;
-    String payload = "";
-
-    http.begin(client, "http://api.ipify.org");
-    int httpResponseCode = http.GET();
-
-    if (httpResponseCode > 0) {
-      Serial.print("HTTP Response code: ");
-      Serial.println(httpResponseCode);
-      payload = http.getString();
-      Serial.print("the server provided this text : ");
-      Serial.println(payload);
-    }
-    else {
-      Serial.print("Error code: ");
-      Serial.println(httpResponseCode);
-    }
-    http.end();
-  }
-
-  // IPAddress ip = WiFi.localIP();
-
-  Serial.print("IP address: ");
-  Serial.println(payload);
+  Serial.print("Public IP: ");
+  Serial.println(publicIP);
   Serial.print("MAC address: ");
   Serial.println(WiFi.macAddress());
 
@@ -203,7 +179,7 @@ int requestCert() {
   Serial.printf("Requesting certificate from %s...\n", signUrl);
 
   JsonDocument doc;
-  doc["IP"] = payload;
+  doc["IP"] = publicIP;
   doc["MAC"] = WiFi.macAddress();
   doc["CSR"] = csr;
   String jsonPayload;
@@ -323,20 +299,6 @@ void setup() {
   }
   Serial.println("SPIFFS Mounted");
 
-  // 2. Generate key and CSR if key does not exist
-  if (!SPIFFS.exists("/client.key")) generateKeyAndCSR();
-
-  // 3. Connect to WiFi
-  WiFi.begin(ssid, password);
-  while (WiFi.status() != WL_CONNECTED) {
-    delay(1000);
-    Serial.println("Connecting to WiFi...");
-  }
-  Serial.println("Connected to WiFi");
-
-  // 4. Sync Time for Cert Validation
-  setClock();
-
   // Remove previously generated keys and cert if needed
   Serial.print("Normal Operation (0), Reset (1): ");
 
@@ -352,6 +314,20 @@ void setup() {
     Serial.println("Board credentials reset");
   }
 
+  // 2. Generate key and CSR if key does not exist
+  if (!SPIFFS.exists("/client.key")) generateKeyAndCSR();
+
+  // 3. Connect to WiFi
+  WiFi.begin(ssid, password);
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(1000);
+    Serial.println("Connecting to WiFi...");
+  }
+  Serial.println("Connected to WiFi");
+
+  // 4. Sync Time for Cert Validation
+  setClock();
+
   // 5. Load root CA cert (needed for TLS to RA and data server)
   ca_cert_str = readFile("/root-ca.crt");
   if (ca_cert_str == "") {
@@ -359,13 +335,31 @@ void setup() {
     while(1) delay(1000);
   }
 
-  // 6. Request client cert if not found or initial boot
+  // 6. Get public IP
+  if (WiFi.status() == WL_CONNECTED) {
+    WiFiClient client;
+    HTTPClient http;
+
+    http.begin(client, "http://api.ipify.org");
+    int httpResponseCode = http.GET();
+
+    if (httpResponseCode > 0) {
+      publicIP = http.getString();
+      Serial.print("Public IP: ");
+      Serial.println(publicIP);
+    } else {
+      Serial.printf("Failed to get public IP: %d\n", httpResponseCode);
+    }
+    http.end();
+  }
+
+  // 7. Request client cert if not found or initial boot
   if (!SPIFFS.exists("/client.crt")) requestCert();
 
-  // 7. Delete csr after certificate creation
+  // 8. Delete csr after certificate creation
   SPIFFS.remove("/client.csr");
 
-  // 8. Load client cert and key
+  // 9. Load client cert and key
   client_cert_str = readFile("/client.crt");
   client_key_str  = readFile("/client.key");
 
@@ -374,7 +368,7 @@ void setup() {
     while(1) delay(1000);
   }
 
-  // 9. Apply Certs to Client
+  // 10. Apply Certs to Client
   mTLSclient.setCACert(ca_cert_str.c_str());
   mTLSclient.setCertificate(client_cert_str.c_str());
   mTLSclient.setPrivateKey(client_key_str.c_str());
