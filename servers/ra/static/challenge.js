@@ -1,6 +1,7 @@
 function startChallenge() {
   const holder = document.getElementById('data-holder');
   const deviceID = holder.dataset.deviceid;
+  document.getElementById('start-challenge').style.visibility = 'hidden';
   fetch(`/start-challenge/${deviceID}/`, {
     method: 'POST',
     headers: {
@@ -28,8 +29,8 @@ function startChallenge() {
       }, 1000);
 
       setTimeout(endChallenge, timer*1000);
-      document.getElementById('start-challenge').style.visibility = 'hidden';
     } else {
+      document.getElementById('start-challenge').style.visibility = 'visible';
       console.error("Timer failed to start")
     }
   });
