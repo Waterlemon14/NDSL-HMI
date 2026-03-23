@@ -13,7 +13,13 @@ def collate_all_results():
 
     for file in files:
         # Extract device name from filename (e.g., 'esp32' from 'results_esp32.csv')
-        device_name = file.replace("results_", "").replace(".csv", "").upper()
+        basename = os.path.basename(file)
+        parts = basename.split("_")
+        
+        if len(parts) >= 2:
+            device_name = parts[1].upper() # Grabs 'PICO', 'ESP32', etc.
+        else:
+            device_name = "UNKNOWN"
         
         # Load the CSV
         df = pd.read_csv(file)
@@ -24,6 +30,11 @@ def collate_all_results():
 
     # 2. Combine all files into one big "Master Table"
     master_df = pd.concat(all_data, ignore_index=True)
+
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+    compiled_csv_path = os.path.join(base_dir, "compiled_results.csv")
+    master_df.to_csv(compiled_csv_path, index=False)
+    print(f"Compiled raw data successfully saved to: {compiled_csv_path}\n")
 
     # 3. COLLATE: Group by Device AND TestType
     summary = master_df.groupby(['Device', 'TestType'])['Elapsed_ms'].agg(['mean', 'min', 'max', 'count'])
