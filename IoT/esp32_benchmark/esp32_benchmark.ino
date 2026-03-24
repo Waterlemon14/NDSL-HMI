@@ -32,16 +32,16 @@
 const char* ssid     = "ndsgwifi";
 const char* password = "H1b2idinF2@";
 
-// Local server endpoints (RA on :8000 via manage.py runserver, Data on :8443)
+// Local server endpoints (RA on :8443 via nginx, Data on :8443)
 // const char* serverUrl       = "https://" LOCAL_SERVER_IP ":8443/data";
-// const char* signUrl         = "http://" LOCAL_SERVER_IP ":8000/receive-device-data/";
-// const char* certDownloadUrl = "http://" LOCAL_SERVER_IP ":8000/download-cert/";
-// const char* renewUrl        = "http://" LOCAL_SERVER_IP ":8000/renew-cert/";
+// const char* signUrl         = "https://" LOCAL_SERVER_IP ":8443/receive-device-data/";
+// const char* certDownloadUrl = "https://" LOCAL_SERVER_IP ":8443/download-cert/";
+// const char* renewUrl        = "https://" LOCAL_SERVER_IP ":8443/renew-cert/";
 
 const char* serverUrl       = "https://51.20.87.204:8443/data";
-const char* signUrl         = "https://13.239.57.125:8000/receive-device-data/";
-const char* certDownloadUrl = "https://13.239.57.125:8000/download-cert/";
-const char* renewUrl        = "https://13.239.57.125:8000/renew-cert/";
+const char* signUrl         = "https://13.239.57.125:8443/receive-device-data/";
+const char* certDownloadUrl = "https://13.239.57.125:8443/download-cert/";
+const char* renewUrl        = "https://13.239.57.125:8443/renew-cert/";
 
 const int BENCHMARK_ITERATIONS = 10000;
 
@@ -241,7 +241,7 @@ void benchmarkKeyGeneration() {
   }
 }
 
-// ─── Benchmark 2: mTLS Handshake ─────────────────────────────────
+// ─── Benchmark 2: mTLS Handshake (Data Server) ──────────────────
 void benchmarkmTLSHandshake() {
   IPAddress host(51, 20, 87, 204);
   int port = 8443;
@@ -255,6 +255,51 @@ void benchmarkmTLSHandshake() {
       Serial.printf("mTLSHandshake,%d,%lu,SUCCESS\n", i + 1, elapsed);
     } else {
       Serial.printf("mTLSHandshake,%d,%lu,FAILED\n", i + 1, elapsed);
+    }
+
+    mtlsClient.stop();
+    delay(500);
+  }
+}
+
+// ─── Benchmark 5: TLS-only Handshake (RA Server :8443) ──────────
+void benchmarkTLSHandshake() {
+  IPAddress host(13, 239, 57, 125);
+  int port = 8443;
+
+  WiFiClientSecure tlsClient;
+  tlsClient.setCACert(ca_cert_str.c_str());
+
+  for (int i = 0; i < BENCHMARK_ITERATIONS; i++) {
+    unsigned long start = millis();
+    bool connected = tlsClient.connect(host, port);
+    unsigned long elapsed = millis() - start;
+
+    if (connected) {
+      Serial.printf("TLSHandshake,%d,%lu,SUCCESS\n", i + 1, elapsed);
+    } else {
+      Serial.printf("TLSHandshake,%d,%lu,FAILED\n", i + 1, elapsed);
+    }
+
+    tlsClient.stop();
+    delay(500);
+  }
+}
+
+// ─── Benchmark 6: mTLS Handshake (RA Server :8444) ──────────────
+void benchmarkmTLSHandshakeRA() {
+  IPAddress host(13, 239, 57, 125);
+  int port = 8444;
+
+  for (int i = 0; i < BENCHMARK_ITERATIONS; i++) {
+    unsigned long start = millis();
+    bool connected = mtlsClient.connect(host, port);
+    unsigned long elapsed = millis() - start;
+
+    if (connected) {
+      Serial.printf("mTLSHandshakeRA,%d,%lu,SUCCESS\n", i + 1, elapsed);
+    } else {
+      Serial.printf("mTLSHandshakeRA,%d,%lu,FAILED\n", i + 1, elapsed);
     }
 
     mtlsClient.stop();
@@ -431,11 +476,15 @@ void loop() {
   Serial.printf("WiFi RSSI: %d dBm\n", WiFi.RSSI());
   Serial.printf("Free Heap: %u bytes\n", ESP.getFreeHeap());
 
-  // Run all 4 benchmarks sequentially
-  benchmarkDataSend();
-  benchmarkRenewal();
-  benchmarkKeyGeneration();
+  // Run all 6 benchmarks sequentially
+  // benchmarkDataSend();
+  
+  // benchmarkKeyGeneration();
   benchmarkmTLSHandshake();
+
+  benchmarkRenewal();
+  benchmarkTLSHandshake();
+  benchmarkmTLSHandshakeRA();
 
   Serial.println("\n===== BENCHMARK COMPLETE =====\n");
 

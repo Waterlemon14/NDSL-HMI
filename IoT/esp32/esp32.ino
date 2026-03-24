@@ -34,11 +34,11 @@
 const char* ssid     = "ndsgwifi";
 const char* password = "H1b2idinF2@";
 
-// Local server endpoints (RA on :8000 via manage.py runserver, Data on :8443)
+// Local server endpoints (RA on :8443 via nginx, Data on :8443)
 const char* serverUrl = "https://" LOCAL_SERVER_IP ":8443/data";
-const char* signUrl = "http://" LOCAL_SERVER_IP ":8000/receive-device-data/";
-const char* certDownloadUrl = "http://" LOCAL_SERVER_IP ":8000/download-cert/";
-const char* renewUrl = "http://" LOCAL_SERVER_IP ":8000/renew-cert/";
+const char* signUrl = "https://" LOCAL_SERVER_IP ":8443/receive-device-data/";
+const char* certDownloadUrl = "https://" LOCAL_SERVER_IP ":8443/download-cert/";
+const char* renewUrl = "https://" LOCAL_SERVER_IP ":8443/renew-cert/";
 
 WiFiClientSecure mTLSclient;
 HTTPClient https;

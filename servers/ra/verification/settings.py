@@ -17,7 +17,7 @@ from dotenv import load_dotenv
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
-load_dotenv(BASE_DIR / '.env')
+load_dotenv(BASE_DIR / ".env")
 
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/5.2/howto/deployment/checklist/
@@ -31,6 +31,7 @@ ALLOWED_HOSTS = [
     '127.0.0.1',
     '172.20.10.2',
     '192.168.0.212',
+    '13.239.57.125',
 ]
 
 # Add EC2 public IP if set
@@ -88,11 +89,11 @@ WSGI_APPLICATION = 'verification.wsgi.application'
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.postgresql',
-        'NAME': os.environ.get('DB_NAME', ''),
-        'USER': os.environ.get('DB_USER', ''),
+        'NAME': os.environ.get('DB_NAME', 'postgres'),
+        'USER': os.environ.get('DB_USER', 'postgres.cldogqgvtsfyqopyuqql'),
         'PASSWORD': os.environ.get('DB_PASSWORD', ''),
-        'HOST': os.environ.get('DB_HOST', ''),
-        'PORT': os.environ.get('DB_PORT', ''),
+        'HOST': os.environ.get('DB_HOST', 'aws-1-ap-southeast-1.pooler.supabase.com'),
+        'PORT': os.environ.get('DB_PORT', '6543'),
         'OPTIONS': {
             'sslmode': 'require',
             'connect_timeout': 5,
@@ -159,12 +160,14 @@ SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
 CSRF_TRUSTED_ORIGINS = [
     'https://127.0.0.1:8443',
     'https://localhost:8443',
+    'https://127.0.0.1:8444',
+    'https://localhost:8444',
 ]
 
 # Add EC2 origin if set
 if os.environ.get('EC2_PUBLIC_IP'):
-    CSRF_TRUSTED_ORIGINS.append(f"https://{os.environ['EC2_PUBLIC_IP']}:8000")
     CSRF_TRUSTED_ORIGINS.append(f"https://{os.environ['EC2_PUBLIC_IP']}:8443")
+    CSRF_TRUSTED_ORIGINS.append(f"https://{os.environ['EC2_PUBLIC_IP']}:8444")
 
 # Production security settings
 if not DEBUG:

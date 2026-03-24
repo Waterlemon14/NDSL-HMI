@@ -5,7 +5,7 @@
 
 set -euo pipefail
 
-echo "=== NDSL-HMI EC2 Setup ==="
+echo "=== NDSL-HMI RA EC2 Setup ==="
 
 # Detect OS
 if [ -f /etc/os-release ]; then
@@ -20,7 +20,7 @@ fi
 echo "--- Installing system dependencies ---"
 if [ "$OS" = "amzn" ]; then
     dnf update -y
-    dnf install -y python3 python3-pip python3-devel gcc git libzbar-devel
+    dnf install -y python3 python3-pip python3-devel gcc git
 elif [ "$OS" = "ubuntu" ]; then
     apt-get update -y
     apt-get install -y python3 python3-pip python3-venv python3-dev gcc libzbar0 libpq-dev

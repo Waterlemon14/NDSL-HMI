@@ -30,9 +30,9 @@ const char* password = "H1b2idinF2@";
 
 // Servers
 const char* serverUrl = "https://51.20.87.204:8443/data";
-const char* signUrl = "https://13.239.57.125:8000/receive-device-data/";
-const char* certDownloadUrl = "https://13.239.57.125:8000/download-cert/";
-const char* renewUrl = "https://13.239.57.125:8000/renew-cert/";
+const char* signUrl = "https://13.239.57.125:8443/receive-device-data/";
+const char* certDownloadUrl = "https://13.239.57.125:8443/download-cert/";
+const char* renewUrl = "https://13.239.57.125:8443/renew-cert/";
 
 WiFiClientSecure secureclient;
 HTTPClient https;

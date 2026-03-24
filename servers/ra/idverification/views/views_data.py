@@ -8,13 +8,13 @@ from django.contrib import messages
 
 from idverification.models import Device, State, Notification
 
-basePathToRepo = Path(__file__).parent.parent.parent.parent.parent
+basePathToRepo = Path(__file__).parent.parent.parent
 
-ca_revoke_url = "https://localhost:15000/revoke"
+ca_revoke_url = "https://54.241.87.38:15000/revoke"
 
-cert_file = basePathToRepo / "servers" / "ra" / "id_server.crt"
-key_file = basePathToRepo / "servers" / "ra" / "id_server.key"
-ca_file = basePathToRepo / "servers" / "ra" / "root-ca.crt"
+cert_file = basePathToRepo / "id_server.crt"
+key_file = basePathToRepo / "id_server.key"
+ca_file = basePathToRepo / "root-ca.crt"
 
 # Create your views here.
 

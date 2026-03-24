@@ -27,9 +27,9 @@ const char* ssid     = "ndsgwifi";
 const char* password = "H1b2idinF2@";
 
 const char* serverUrl       = "https://51.20.87.204:8443/data";
-const char* signUrl         = "https://13.239.57.125:8000/receive-device-data/";
-const char* certDownloadUrl = "https://13.239.57.125:8000/download-cert/";
-const char* renewUrl        = "https://13.239.57.125:8000/renew-cert/";
+const char* signUrl         = "https://13.239.57.125:8443/receive-device-data/";
+const char* certDownloadUrl = "https://13.239.57.125:8443/download-cert/";
+const char* renewUrl        = "https://13.239.57.125:8443/renew-cert/";
 
 const int BENCHMARK_ITERATIONS = 10000;
 
@@ -234,7 +234,7 @@ void benchmarkKeyGeneration() {
   }
 }
 
-// ─── Benchmark 2: mTLS Handshake (BearSSL) ──────────────────────
+// ─── Benchmark 2: mTLS Handshake (Data Server, BearSSL) ─────────
 void benchmarkmTLSHandshake() {
   IPAddress host(51, 20, 87, 204);
   int port = 8443;
@@ -248,6 +248,51 @@ void benchmarkmTLSHandshake() {
       Serial.printf("mTLSHandshake,%d,%lu,SUCCESS\n", i + 1, elapsed);
     } else {
       Serial.printf("mTLSHandshake,%d,%lu,FAILED\n", i + 1, elapsed);
+    }
+
+    secureclient.stop();
+    delay(500);
+  }
+}
+
+// ─── Benchmark 5: TLS-only Handshake (RA Server :8443) ──────────
+void benchmarkTLSHandshake() {
+  IPAddress host(13, 239, 57, 125);
+  int port = 8443;
+
+  WiFiClientSecure tlsClient;
+  tlsClient.setTrustAnchors(trustRoot);
+
+  for (int i = 0; i < BENCHMARK_ITERATIONS; i++) {
+    unsigned long start = millis();
+    bool connected = tlsClient.connect(host, port);
+    unsigned long elapsed = millis() - start;
+
+    if (connected) {
+      Serial.printf("TLSHandshake,%d,%lu,SUCCESS\n", i + 1, elapsed);
+    } else {
+      Serial.printf("TLSHandshake,%d,%lu,FAILED\n", i + 1, elapsed);
+    }
+
+    tlsClient.stop();
+    delay(500);
+  }
+}
+
+// ─── Benchmark 6: mTLS Handshake (RA Server :8444) ──────────────
+void benchmarkmTLSHandshakeRA() {
+  IPAddress host(13, 239, 57, 125);
+  int port = 8444;
+
+  for (int i = 0; i < BENCHMARK_ITERATIONS; i++) {
+    unsigned long start = millis();
+    bool connected = secureclient.connect(host, port);
+    unsigned long elapsed = millis() - start;
+
+    if (connected) {
+      Serial.printf("mTLSHandshakeRA,%d,%lu,SUCCESS\n", i + 1, elapsed);
+    } else {
+      Serial.printf("mTLSHandshakeRA,%d,%lu,FAILED\n", i + 1, elapsed);
     }
 
     secureclient.stop();
@@ -445,6 +490,8 @@ void loop() {
   benchmarkRenewal();
   benchmarkKeyGeneration();
   benchmarkmTLSHandshake();
+  benchmarkTLSHandshake();
+  benchmarkmTLSHandshakeRA();
 
   Serial.println("\n===== BENCHMARK COMPLETE =====\n");
 

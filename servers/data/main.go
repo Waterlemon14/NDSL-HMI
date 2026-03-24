@@ -296,7 +296,7 @@ func checkDeviceState(mac string) (DeviceState, error) {
 }
 
 func reconnectDevice(mac string) error {
-	reconnectURL := fmt.Sprintf("https://13.239.57.125:8000/reconnect/%s/", mac)
+	reconnectURL := fmt.Sprintf("https://13.239.57.125:8443/reconnect/%s/", mac)
 
 	req, err := http.NewRequest("GET", reconnectURL, nil)
 	if err != nil {
@@ -335,7 +335,7 @@ func suspendDevice(mac string) error {
 		return err
 	}
 	reqBody := bytes.NewBuffer(jsonData)
-	req, err := http.NewRequest("POST", "https://13.239.57.125:8000/report/", reqBody)
+	req, err := http.NewRequest("POST", "https://13.239.57.125:8443/report/", reqBody)
 	if err != nil {
 		log.Printf("Request body read error: %v", err)
 		// http.Error(w, "Internal error", http.StatusInternalServerError)
