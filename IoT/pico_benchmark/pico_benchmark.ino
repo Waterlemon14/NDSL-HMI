@@ -261,6 +261,7 @@ void benchmarkTLSHandshake() {
   int port = 8443;
 
   WiFiClientSecure tlsClient;
+  tlsClient.setBufferSizes(2048, 2048);
   tlsClient.setTrustAnchors(trustRoot);
 
   for (int i = 0; i < BENCHMARK_ITERATIONS; i++) {
@@ -425,6 +426,7 @@ void setup() {
   }
 
   trustRoot = new BearSSL::X509List(caCert.c_str());
+  secureclient.setBufferSizes(2048, 2048);
   secureclient.setTrustAnchors(trustRoot);
 
   // 5. Get public IP
