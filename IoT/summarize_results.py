@@ -59,6 +59,7 @@ def collate_all_results():
 
         # 2. Combine all files into one big "Master Table"
         master_df = pd.concat(all_data, ignore_index=True)
+        master_df = master_df.groupby(['Device', 'TestType']).sample(n=10000, random_state=42).reset_index(drop=True)
         master_df.to_csv(compiled_csv_path, index=False)
         print(f"Compiled raw data successfully saved to: {compiled_csv_path}\n")
     
