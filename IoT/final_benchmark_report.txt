@@ -4,18 +4,23 @@
 
                             Avg (ms)  Min (ms)  Max (ms)  Success (%)  Fail (%)  Samples
 Device  TestType                                                                        
-ESP32   CertificateRenewal   2564.83      1974     16297        99.94      0.06    10000
+ESP32   CertificateRenewal   2760.70      1963     18162        99.88      0.12    10000
         DataSend             2700.34      1819     14440        99.99      0.01    10000
         KeyGen                136.35       135       138       100.00      0.00    10000
+        TLSHandshake         1310.56       907      7750       100.00      0.00    10000
         mTLSHandshake        1752.35      1170    120263        98.12      1.88    10000
-ESP8266 CertificateRenewal   4793.37      3935     27441        86.57     13.43    10000
+        mTLSHandshakeRA      3537.87      1029    124948        91.80      8.20    10000
+ESP8266 CertificateRenewal   5047.77      4285     19756        99.86      0.14    10000
         DataSend             5805.56      4647     27729        99.32      0.68    10000
         KeyGen                403.85       403       405       100.00      0.00    10000
+        TLSHandshake         3746.73      2915     29988        98.11      1.89    10000
         mTLSHandshake        4369.38      3546     21421        99.92      0.08    10000
-PICO    CertificateRenewal   5195.94       322     20533        91.26      8.74    10000
+        mTLSHandshakeRA      3639.02      3204     12592       100.00      0.00    10000
+PICO    CertificateRenewal   5608.75      4742     23441        86.50     13.50    10000
         DataSend             3957.24      3347     14781        99.93      0.07    10000
         KeyGen                 81.68        81        83       100.00      0.00    10000
+        TLSHandshake         1994.08      1850      6830       100.00      0.00    10000
         mTLSHandshake        2435.10      2091     15234        99.69      0.31    10000
 
 ==================================================
-Report Generated: 2026-03-23 14:22:12.689414
+Report Generated: 2026-03-27 16:02:50.549063
